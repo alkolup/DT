@@ -1,0 +1,1951 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1f2a44" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <title>DigiTool</title>
+  
+  <script src="vendor/jspsych/jspsych.browser.min.js"></script>
+  <script src="vendor/plugin-html-button-response/plugin-html-button-response.browser.min.js"></script>
+  <script src="digitool-action-log-store.js"></script>
+  <script src="digitool-idle-prompt.js"></script>
+  <link href="vendor/jspsych/jspsych.css" rel="stylesheet" />
+  
+  <style>
+    body { height: 100%; margin: 0; background-color: #f4f4f9; }
+    .wrap { max-width: 840px; margin: 24px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .prompt { margin-bottom: 20px; font-size: 18px; line-height: 1.5; text-align: center; }
+    /* Společné styly pro kontejnery */
+    .svg-container { width: 100%; height: 420px; background: #fff; border: 1px solid #ddd; border-radius: 8px; touch-action: none; }
+    .ui { text-align: center; margin-top: 15px; }
+    .note { color: #555; font-size: 14px; }
+
+    /* ==========================================
+       Styly pro úlohu 1 (Mapa - DegreeSequence)
+       ========================================== */
+    #degree-graph { background-color: #e6f2eb; } /* green background */
+
+    /* Žluté nápovědy: zalamování na výšku, ne rozšiřování layoutu do šířky */
+    .task-hint-banner {
+      box-sizing: border-box;
+      max-width: 100%;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      word-break: break-word;
+      hyphens: auto;
+    }
+    /* Zelené SVG plátno — jednotná velikost (viewBox 480×360), nezávislá na nápovědě */
+    .degree-plot-column {
+      width: 480px;
+      max-width: min(480px, 100%);
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+    .degree-plot-column--centered {
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .degree-plot-column .svg-container {
+      width: 100%;
+      max-width: 480px;
+      height: 420px;
+      display: block;
+      box-sizing: border-box;
+    }
+    
+    .numpad-btn { font-size: 24px; font-weight: bold; border: 2px solid #ccc; border-radius: 8px; background: #fff; cursor: pointer; transition: 0.2s; }
+    .numpad-btn:hover { background: #f0f0f0; border-color: #888; }
+    
+    .deg-node { cursor: pointer; }
+    
+    /* Podklad pro barevné zvýraznění městečka */
+    .town-highlight { fill: transparent; stroke: transparent; stroke-width: 3px; transition: 0.2s; }
+    .deg-node:hover .town-highlight { fill: rgba(255, 255, 255, 0.5); }
+    .deg-node.selected .town-highlight { fill: #b3e0ff; stroke: #007bff; }
+    .deg-node.correct .town-highlight { fill: #d4edda; stroke: #28a745; }
+    .deg-node.incorrect .town-highlight { fill: #f8d7da; stroke: #dc3545; }
+    
+    .town-icon { font-size: 32px; text-anchor: middle; dominant-baseline: central; pointer-events: none; user-select: none; }
+    
+    /* Odznáček pro zapsané číslo */
+    .badge-bg { fill: #ffffff; stroke: #333; stroke-width: 2px; }
+    .badge-text { pointer-events: none; font-family: sans-serif; font-weight: bold; font-size: 14px; text-anchor: middle; dominant-baseline: central; user-select: none; }
+
+
+    /* ==========================================
+       Styly pro úlohu 2 (Klasický graf - Connect)
+       ========================================== */
+    #connect-graph, #connect-graph-3 { background-color: #e6f2eb; } /* stejné jako DegreeSequence */
+    .node { cursor: grab; }
+    .node:active { cursor: grabbing; }
+    .node .town-highlight { fill: transparent; stroke: transparent; stroke-width: 3px; transition: 0.2s; }
+    .node:hover .town-highlight { fill: rgba(255, 255, 255, 0.5); }
+    .node.selected .town-highlight { fill: #b3e0ff; stroke: #007bff; }
+    .node.correct .town-highlight { fill: #d4edda; stroke: #28a745; }
+    .node.incorrect .town-highlight { fill: #f8d7da; stroke: #dc3545; }
+    .node .town-icon { font-size: 32px; text-anchor: middle; dominant-baseline: central; pointer-events: none; user-select: none; }
+
+    .node text { user-select: none; pointer-events: none; font-family: sans-serif; font-weight: bold; font-size: 14px; text-anchor: middle; dominant-baseline: central; }
+    .edge { stroke: none; }
+    .ghost-bubble {
+      margin-left: -10px;
+      margin-bottom: 40px;
+      position: relative;
+      background: #fff;
+      border: 3px solid #007bff;
+      border-radius: 20px;
+      padding: 20px;
+      min-width: 280px;
+      max-width: 320px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      opacity: 0;
+      pointer-events: none;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .ghost-bubble.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    /* Blokové flex #ghost-ui jinak sahá přes celou šířku a s vysokým z-indexem pohltí kliky na tlačítka úlohy pod ním */
+    #ghost-ui {
+      width: max-content;
+      max-width: 100%;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    #ghost-ui #ghost-character {
+      pointer-events: auto;
+    }
+    .ghost-text {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1f2a44;
+      margin-bottom: 15px;
+      text-align: center;
+      line-height: 1.3;
+    }
+    .ghost-buttons > button,
+    .ghost-hint-btn {
+      margin-top: 4px;
+      padding: 10px 15px;
+      font-size: 14px;
+      border-radius: 8px;
+      border: none;
+      background: #007bff;
+      color: #ffffff;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      text-align: center;
+    }
+    .ghost-buttons > button:hover,
+    .ghost-hint-btn:hover {
+      background: #0056d2;
+    }
+    /* Dialog „Myslíš si…“: skrýt šedá tlačítka, zablokovat úlohu; duch (ghost-hint-btn) zůstane */
+    body.digitool-self-assessment-lock #jspsych-target button.custom-task-btn {
+      display: none !important;
+    }
+    body.digitool-self-assessment-lock #jspsych-target #degree-container.digitool-task-surface,
+    body.digitool-self-assessment-lock #jspsych-target #connect-container > #ghost-ui ~ *,
+    body.digitool-self-assessment-lock #jspsych-target .digitool-task-surface,
+    body.digitool-self-assessment-lock #jspsych-target .park-task-root #park-container.digitool-task-surface,
+    body.digitool-self-assessment-lock #jspsych-target .park-task-root > .prompt,
+    body.digitool-self-assessment-lock #jspsych-target .park-task-root .park-zoom.digitool-task-surface {
+      pointer-events: none !important;
+      user-select: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="jspsych-target" class="wrap"></div>
+
+  <script>
+    const DIGITOOL_RESULTS_KEY = 'digitool_results';
+    const DIGITOOL_HUB_FILE = 'index.html';
+    const setDigitoolSelfAssessmentUiLock = (locked) => {
+      document.body.classList.toggle("digitool-self-assessment-lock", !!locked);
+    };
+
+    const showHintBanner = (idOrEl) => {
+      const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+      if (!el) return;
+      el.style.display = 'block';
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    };
+    const attachWindowScrollLogger = (logFn, scope) => {
+      let ticking = false;
+      const onScroll = () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          logFn('window_scroll', {
+            scope,
+            scroll_x: Math.round(window.scrollX || 0),
+            scroll_y: Math.round(window.scrollY || 0)
+          });
+          ticking = false;
+        });
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      return () => window.removeEventListener('scroll', onScroll);
+    };
+    const urlParams = new URLSearchParams(window.location.search);
+    const respondentIdFromUrl = urlParams.get('rid');
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', () => {
+      history.pushState(null, '', location.href);
+    });
+
+    const buildActionLogDescription = (action, detail) => {
+      if (detail.node != null && detail.new_x != null && detail.new_y != null) {
+        return `${action}: node ${detail.node} -> (${detail.new_x}, ${detail.new_y})`;
+      }
+      if (detail.from != null && detail.to != null) {
+        return `${action}: ${detail.from}-${detail.to}`;
+      }
+      if (detail.node != null) return `${action}: node ${detail.node}`;
+      return action;
+    };
+
+    const normalizeActionLogEntryForExport = (entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const action = entry.action || entry.type || 'unknown_action';
+      const time =
+        entry.time ??
+        (entry.ts_iso ? Date.parse(entry.ts_iso) : null) ??
+        Date.now();
+      const detail = { ...entry };
+      delete detail.action;
+      delete detail.type;
+      delete detail.time;
+      delete detail.t_ms;
+      delete detail.ts_iso;
+      delete detail.description;
+      const hasDetail = Object.keys(detail).length > 0;
+      return {
+        time,
+        action,
+        description: hasDetail ? buildActionLogDescription(action, detail) : action,
+        ...detail
+      };
+    };
+
+    const collectTrialActionLogsForExport = (trial) => {
+      if (!trial || typeof trial !== 'object') return [];
+      if (Array.isArray(trial.action_logs) && trial.action_logs.length > 0) {
+        return trial.action_logs;
+      }
+      if (Array.isArray(trial.interaction_log) && trial.interaction_log.length > 0) {
+        return trial.interaction_log;
+      }
+      return Array.isArray(trial.action_logs) ? trial.action_logs : [];
+    };
+
+    const sanitizeDigitoolJsPsychTrialsForExport = (trials) =>
+      trials.map((t) => {
+        if (!t || typeof t !== 'object') return t;
+        const out = { ...t };
+        if ('stimulus' in out) out.stimulus = '';
+        if (out.action_logs || out.interaction_log) {
+          out.action_logs = collectTrialActionLogsForExport(out).map(
+            normalizeActionLogEntryForExport
+          );
+          delete out.interaction_log;
+        }
+        if ('final_nodes_positions' in out) delete out.final_nodes_positions;
+        if ('final_edges' in out) delete out.final_edges;
+        return out;
+      });
+
+    const saveDegreeToHub = () => {
+      try {
+        const storedLogs = DigitoolActionLogStore.read(respondentIdFromUrl, 'degree');
+        let allData = sanitizeDigitoolJsPsychTrialsForExport(jsPsych.data.get().values());
+        allData = DigitoolActionLogStore.mergeTrialsWithStoredLogs(allData, storedLogs);
+        const parsed = JSON.parse(localStorage.getItem(DIGITOOL_RESULTS_KEY) || '{}');
+        parsed.degree = {
+          respondent_id: respondentIdFromUrl || null,
+          completed_at: new Date().toISOString(),
+          action_logs: storedLogs.map(normalizeActionLogEntryForExport),
+          trials: allData
+        };
+        localStorage.setItem(DIGITOOL_RESULTS_KEY, JSON.stringify(parsed));
+        window.location.href = `${DIGITOOL_HUB_FILE}?completed=degree`;
+        return true;
+      } catch (err) {
+        console.error('Nepodařilo se uložit Degree data do hubu:', err);
+        return false;
+      }
+    };
+
+    const jsPsych = initJsPsych({
+    display_element: 'jspsych-target',
+    on_finish: function() {
+        if (!saveDegreeToHub()) {
+          alert('Nepodařilo se uložit výsledky. Zkuste úlohu dokončit znovu nebo kontaktujte vedoucího výzkumu.');
+        }
+    }
+});
+
+
+ // ==========================================
+    // ÚLOHA 1: Mapa s hrady a chytrou nápovědou
+    // ==========================================
+    const DegreeSequence1 = {
+      type: jsPsychHtmlButtonResponse,
+      choices: [],
+      data: { task_name: 'DegreeSequence1' },
+      stimulus: () => {
+        return `
+          <div id="ghost-ui" style="position: fixed; bottom: 20px; left: 20px; display: flex; align-items: flex-end; z-index: 999; transition: transform 0.5s ease; transform: scale(1); transform-origin: bottom left;">            
+            <div id="ghost-character" style="text-align: center; animation: float 3s ease-in-out infinite; cursor: pointer;">
+              <div style="font-size: 100px; line-height: 1;">👻</div>
+              <div style="font-weight: bold; background: rgba(255,255,255,0.8); padding: 2px 8px; border-radius: 10px;"></div>
+            </div>
+
+            <div id="ghost-bubble" class="ghost-bubble">
+              <div id="ghost-text" class="ghost-text">
+                Už jsi někdy řešil(a) podobnou úlohu?
+              </div>
+              <div id="ghost-buttons" style="display: flex; gap: 10px; justify-content: center; flex-direction: row;">
+                <button id="ghost-btn-yes" style="padding: 10px 15px; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Ano</button>
+                <button id="ghost-btn-unknown" style="padding: 10px 15px; border: none; border-radius: 8px; background: #007bff; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Nevím</button>
+                <button id="ghost-btn-no" style="padding: 10px 15px; border: none; border-radius: 8px; background: #dc3545; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Ne</button>
+              </div>
+              <div style="position: absolute; bottom: -15px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #007bff;"></div>
+              <div style="position: absolute; bottom: -10px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #fff;"></div>
+            </div>
+          </div>
+
+          <div id="degree-container" class="digitool-task-surface" style="position: relative;">
+            <div id="ghost-blocker" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 998; cursor: pointer;"></div>
+            <div class="prompt" style="position: relative;">
+              <h2>Kolik cest vede z každého hradu?</h2>
+              <p>Nejdříve klikni na hrad a poté vyber číslo z číselníku.</p>
+              
+              <div id="hint-must-answer" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                Nejdřív musíš zodpovědět otázky ducha.
+              </div>
+
+              <div id="hint-box-1" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                Klikni na hrad a potom vyber číslo z nabídky vpravo.
+              </div>
+              
+              <div id="hint-box-2" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                Když označíš některý z hradů číslem, ukážu ti, jestli je číslo správně. Zeleně obarvené hrady jsou správně, červeně obarvené hrady je potřeba opravit.
+              </div>
+              
+              <div id="hint-box-3" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                Nejdřív klikni na hrad, kterému chceš smazat číslo, poté znovu na tlačítko.
+              </div>
+            </div>
+            
+            <div style="display: flex; gap: 20px; align-items: flex-start; justify-content: center;">
+              <div class="degree-plot-column">
+                <svg id="degree-graph" class="svg-container" viewBox="0 0 480 360" preserveAspectRatio="xMidYMid meet" style="background-color: #e6f2eb;"></svg>
+              </div>
+              <div id="numpad" style="display: grid; grid-template-columns: repeat(2, 60px); grid-template-rows: repeat(5, 60px); gap: 10px; align-content: center; flex-shrink: 0;">
+                </div>
+            </div>
+          </div>
+
+	<div style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;">
+            <button id="btn-hide-hint" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Schovat nápovědu</button>
+            <button id="btn-delete" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Smazat číslo</button>
+            <button id="btn-restart" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Začít znovu</button>
+            <button id="btn-next" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Další úloha</button>
+          </div>
+
+          <style>
+            @keyframes float {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(-15px); }
+            }
+            .ghost-hint-btn {
+                margin-top: 4px;
+                padding: 10px 15px;
+                font-size: 14px;
+                border-radius: 8px;
+                border: none;
+                background: #007bff;
+                color: #ffffff;
+                cursor: pointer;
+                font-weight: bold;
+                transition: background 0.2s ease;
+                width: 100%;
+                text-align: center;
+                margin-bottom: 5px;
+            }
+            .ghost-hint-btn:hover {
+                background: #0056d2;
+            }
+            .custom-task-btn:hover {
+                background: #555 !important;
+            }
+            .degree-self-assessment-wide {
+              max-width: min(400px, 94vw);
+            }
+          </style>
+        `;
+      },
+      on_load: () => {
+        setDigitoolSelfAssessmentUiLock(false);
+        disposeDigitoolIdleTimer();
+        console.log('DegreeSequence1: on_load started.');
+        const svg = document.getElementById('degree-graph');
+        const numpad = document.getElementById('numpad');
+        const svgNS = "http://www.w3.org/2000/svg";
+        
+        let selectedNodeId = null;
+        let actionLogs = [];
+        DigitoolActionLogStore.wireArray(respondentIdFromUrl, 'degree', actionLogs, {
+          reset: true,
+          taskName: 'DegreeSequence1'
+        });
+        actionLogs.push({ action: 'task_loaded', task_name: 'DegreeSequence1' });
+        const detachWindowScrollLoggerDegree1 = attachWindowScrollLogger((action, detail) => {
+          actionLogs.push({ action, ...detail });
+        }, 'DegreeSequence1');
+        let feedbackEnabled = false; // Výchozí stav: zpětná vazba je vypnutá
+        
+        let ghostState = 1; 
+        let familiarityAnswer1 = null;
+        let degreeSelfAssessmentOpen = false;
+
+        const ghostText = document.getElementById('ghost-text');
+        const ghostButtons = document.getElementById('ghost-buttons');
+        const ghostBubble = document.getElementById('ghost-bubble');
+        const ghostUI = document.getElementById('ghost-ui');
+        const ghostCharacter = document.getElementById('ghost-character');
+
+        // Zviditelnit bublinu hned na začátku
+        ghostBubble.classList.add('visible');
+
+        document.getElementById('ghost-blocker').addEventListener('click', () => {
+            showHintBanner('hint-must-answer');
+            actionLogs.push({ time: Date.now(), action: 'click_blocked_task' });
+        });
+        const blockUntilGhostIntroAnswered = (source) => {
+            if (ghostState === 1 || ghostState === 2) {
+                showHintBanner('hint-must-answer');
+                actionLogs.push({ time: Date.now(), action: 'click_blocked_before_intro_answer', source: source });
+                return true;
+            }
+            return false;
+        };
+
+        // --- OBSLUHA OTÁZEK BÍLÉ PANÍ ---
+        const handleGhostAnswer = (answer) => {
+            if (ghostState === 1) {
+                familiarityAnswer1 = answer;
+                actionLogs.push({ time: Date.now(), action: 'ghost_q1_answered', answer: answer });
+                ghostText.innerHTML = 'Pokud budeš potřebovat nápovědu,<br>klikni na mě.';
+                ghostButtons.innerHTML = `
+                  <button id="ghost-btn-minimize" style="padding: 10px 15px; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Chci začít pracovat.</button>
+                  <button id="ghost-btn-help-now" style="padding: 10px 15px; border: none; border-radius: 8px; background: #007bff; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Chci nápovědu.</button>
+                `;
+                
+                document.getElementById('ghost-btn-minimize').addEventListener('click', () => {
+                    ghostUI.style.transform = 'scale(0.6)';
+                    ghostBubble.classList.remove('visible');
+                    if (document.getElementById('ghost-blocker')) document.getElementById('ghost-blocker').remove();
+                    document.getElementById('hint-must-answer').style.display = 'none';
+                    document.getElementById('hint-box-1').style.display = 'none';
+                    document.getElementById('hint-box-2').style.display = 'none';
+                    document.getElementById('hint-box-3').style.display = 'none';
+                    ghostState = 3;
+                    actionLogs.push({ time: Date.now(), action: 'ghost_minimized' });
+                });
+
+                document.getElementById('ghost-btn-help-now').addEventListener('click', () => {
+                    if (document.getElementById('ghost-blocker')) document.getElementById('ghost-blocker').remove();
+                    document.getElementById('hint-must-answer').style.display = 'none';
+                    document.getElementById('hint-box-1').style.display = 'none';
+                    document.getElementById('hint-box-2').style.display = 'none';
+                    document.getElementById('hint-box-3').style.display = 'none';
+                    ghostState = 3;
+                    actionLogs.push({ time: Date.now(), action: 'ghost_help_requested_from_intro' });
+                    ghostCharacter.click();
+                });
+            }
+        };
+
+        // Připojíme klikání na tlačítka úvodní otázky
+        document.getElementById('ghost-btn-yes').addEventListener('click', () => handleGhostAnswer('Ano'));
+        document.getElementById('ghost-btn-unknown').addEventListener('click', () => handleGhostAnswer('Nevím'));
+        document.getElementById('ghost-btn-no').addEventListener('click', () => handleGhostAnswer('Ne'));
+
+        // --- DATA GRAFU Z LATEXU ---
+        const nodes = [
+          {id: 1, x: 160, y: 60,  degree: null},
+          {id: 2, x: 320, y: 60,  degree: null},
+          {id: 3, x: 80,  y: 160, degree: null},
+          {id: 4, x: 240, y: 160, degree: null},
+          {id: 5, x: 380, y: 135, degree: null},
+          {id: 6, x: 210, y: 260, degree: null}
+        ];
+        
+        const edges = [
+          {u: 1, v: 2}, {u: 1, v: 3}, {u: 1, v: 4}, {u: 1, v: 6},
+          {u: 2, v: 4}, {u: 2, v: 5}, {u: 3, v: 4}, {u: 3, v: 6},
+          {u: 4, v: 5}, {u: 4, v: 6}, {u: 5, v: 6}
+        ];
+        
+        const correctDegrees = {};
+        nodes.forEach(n => correctDegrees[n.id] = 0);
+        edges.forEach(edge => {
+            if(correctDegrees[edge.u] !== undefined) correctDegrees[edge.u]++;
+            if(correctDegrees[edge.v] !== undefined) correctDegrees[edge.v]++;
+        });
+
+        // --- OBSLUHA NÁPOVĚDY (Kliknutí na paní) ---
+        ghostCharacter.addEventListener('click', () => {
+            if (degreeSelfAssessmentOpen) return;
+            if (ghostState === 1 || ghostState === 2) {
+                actionLogs.push({ time: Date.now(), action: 'ghost_clicked_during_intro' });
+                ghostBubble.classList.add('visible');
+                ghostUI.style.transform = 'scale(1)';
+                if (ghostState === 1) {
+                    ghostButtons.style.flexDirection = 'row';
+                }
+                return;
+            }
+            if (ghostState === 3) { 
+                actionLogs.push({ time: Date.now(), action: 'ghost_clicked_for_hint' });
+                ghostText.innerHTML = 'Jak ti mohu pomoci?';
+                ghostButtons.style.flexDirection = 'column'; // Tlačítka pod sebou
+                
+                // Přepíšeme obsah divu novými tlačítky
+                ghostButtons.innerHTML = `
+                    <button id="hint-1" class="ghost-hint-btn">Nejde mi doplnit čísla ke hradům.</button>
+                    <button id="hint-2" class="ghost-hint-btn">Nevím, jestli doplňuji správná čísla.</button>
+                    <button id="ghost-hint-close" class="ghost-hint-btn" style="background: #6c757d;">Zavřít nápovědu</button>
+                `;
+                
+                ghostBubble.classList.add('visible');
+                ghostUI.style.transform = 'scale(1)'; // Zvětšit ducha
+
+                // NÁPOVĚDA 1
+                document.getElementById('hint-1').addEventListener('click', () => {
+                    showHintBanner('hint-box-1'); // Zobrazí rámeček nahoře
+                    document.getElementById('hint-box-2').style.display = 'none';
+                    document.getElementById('hint-box-3').style.display = 'none';
+                    ghostBubble.classList.remove('visible');
+                    ghostUI.style.transform = 'scale(0.6)'; // Zmenšit ducha
+                    actionLogs.push({ time: Date.now(), action: 'hint_1_used' });
+                });
+
+                // NÁPOVĚDA 2
+                document.getElementById('hint-2').addEventListener('click', () => {
+                    document.getElementById('hint-box-1').style.display = 'none';
+                    showHintBanner('hint-box-2'); // Zobrazí rámeček nahoře
+                    document.getElementById('hint-box-3').style.display = 'none';
+                    feedbackEnabled = true; // Zapneme barvičky pro další tahy
+                    
+                    // Zpětně obarvíme všechny už vyplněné hrady!
+                    nodes.forEach(n => {
+                        if (n.degree !== null) {
+                            const activeGroup = svg.querySelector(`g[data-id="${n.id}"]`);
+                            const isCorrect = (n.degree === correctDegrees[n.id]);
+                            activeGroup.classList.remove('correct', 'incorrect');
+                            if (isCorrect) activeGroup.classList.add('correct');
+                            else activeGroup.classList.add('incorrect');
+                        }
+                    });
+
+                    ghostBubble.classList.remove('visible');
+                    ghostUI.style.transform = 'scale(0.6)'; // Zmenšit ducha
+                    actionLogs.push({ time: Date.now(), action: 'hint_2_used_feedback_enabled' });
+                });
+
+                // ZAVŘÍT BEZ VÝBĚRU RADY
+                document.getElementById('ghost-hint-close').addEventListener('click', () => {
+                    ghostBubble.classList.remove('visible');
+                    ghostUI.style.transform = 'scale(0.6)';
+                    actionLogs.push({ time: Date.now(), action: 'ghost_hint_closed' });
+                });
+            }
+            console.log('DegreeSequence1: ghostCharacter click handler finished.');
+        });
+
+        // --- VYKRESLENÍ CEST ---
+        edges.forEach(edge => {
+            const nodeU = nodes.find(n => n.id === edge.u);
+            const nodeV = nodes.find(n => n.id === edge.v);
+            const roadGroup = document.createElementNS(svgNS, 'g');
+            
+            const asphalt = document.createElementNS(svgNS, 'line');
+            asphalt.setAttribute('x1', nodeU.x); asphalt.setAttribute('y1', nodeU.y);
+            asphalt.setAttribute('x2', nodeV.x); asphalt.setAttribute('y2', nodeV.y);
+            asphalt.setAttribute('stroke', '#666'); asphalt.setAttribute('stroke-width', '14');
+            
+            const centerLine = document.createElementNS(svgNS, 'line');
+            centerLine.setAttribute('x1', nodeU.x); centerLine.setAttribute('y1', nodeU.y);
+            centerLine.setAttribute('x2', nodeV.x); centerLine.setAttribute('y2', nodeV.y);
+            centerLine.setAttribute('stroke', '#fff'); centerLine.setAttribute('stroke-width', '2');
+            centerLine.setAttribute('stroke-dasharray', '8,8');
+            
+            roadGroup.appendChild(asphalt); roadGroup.appendChild(centerLine);
+            svg.appendChild(roadGroup);
+        });
+
+        // --- VYKRESLENÍ HRADŮ ---
+        nodes.forEach(node => {
+            const group = document.createElementNS(svgNS, 'g');
+            group.classList.add('deg-node');
+            group.dataset.id = node.id;
+            
+            const highlight = document.createElementNS(svgNS, 'circle');
+            highlight.setAttribute('cx', node.x); highlight.setAttribute('cy', node.y);
+            highlight.setAttribute('r', 32);
+            highlight.classList.add('town-highlight');
+            
+            const icon = document.createElementNS(svgNS, 'text');
+            icon.setAttribute('x', node.x); icon.setAttribute('y', node.y);
+            icon.textContent = "🏰"; // ZMĚNĚNO NA HRAD!
+            icon.classList.add('town-icon');
+            
+            const badgeBg = document.createElementNS(svgNS, 'circle');
+            badgeBg.setAttribute('cx', node.x + 18); badgeBg.setAttribute('cy', node.y - 18);
+            badgeBg.setAttribute('r', 12);
+            badgeBg.classList.add('badge-bg');
+            
+            const badgeText = document.createElementNS(svgNS, 'text');
+            badgeText.setAttribute('x', node.x + 18); badgeText.setAttribute('y', node.y - 18);
+            badgeText.textContent = "";
+            badgeText.classList.add('badge-text');
+            
+            group.appendChild(highlight);
+            group.appendChild(icon);
+            group.appendChild(badgeBg);
+            group.appendChild(badgeText);
+            svg.appendChild(group);
+            
+            group.addEventListener('click', () => {
+                document.querySelectorAll('.deg-node').forEach(n => n.classList.remove('selected'));
+                selectedNodeId = node.id;
+                group.classList.add('selected');
+                actionLogs.push({ time: Date.now(), action: 'select_town', node: node.id });
+            });
+        });
+
+        // --- ČÍSELNÍK ---
+        for (let i = 0; i <= 9; i++) {
+            const btn = document.createElement('button');
+            btn.className = 'numpad-btn';
+            btn.textContent = i;
+            
+            btn.addEventListener('click', () => {
+                if (selectedNodeId !== null) {
+                    const nodeData = nodes.find(n => n.id === selectedNodeId);
+                    nodeData.degree = i;
+                    
+                    const activeGroup = svg.querySelector(`g[data-id="${selectedNodeId}"]`);
+                    activeGroup.querySelector('.badge-text').textContent = i;
+                    
+                    const actualDegree = correctDegrees[selectedNodeId];
+                    const isCorrect = (i === actualDegree);
+                    
+                    // ODSTRANĚNÍ BAREV (pokud tam nějaké byly)
+                    activeGroup.classList.remove('correct', 'incorrect');
+                    
+                    // PŘIDÁNÍ BAREV POUZE POKUD JE NÁPOVĚDA AKTIVNÍ
+                    if (feedbackEnabled) {
+                        if (isCorrect) activeGroup.classList.add('correct');
+                        else activeGroup.classList.add('incorrect');
+                    }
+                    
+                    activeGroup.classList.remove('selected');
+                    actionLogs.push({ time: Date.now(), action: 'set_degree', node: selectedNodeId, value: i, is_correct: isCorrect, feedback_shown: feedbackEnabled });
+                    selectedNodeId = null;
+                }
+            });
+            numpad.appendChild(btn);
+        }
+
+// --- VLOŽIT NA KONEC on_load (Před ukládání dat) ---
+        
+        // 1. Schovat nápovědu
+        document.getElementById('btn-hide-hint').addEventListener('click', () => {
+            if (blockUntilGhostIntroAnswered('btn-hide-hint')) return;
+            document.getElementById('hint-box-1').style.display = 'none';
+            document.getElementById('hint-box-2').style.display = 'none';
+            document.getElementById('hint-box-3').style.display = 'none';
+            feedbackEnabled = false; // Vypne barvičky
+            nodes.forEach(n => { // Smaže aktuální barvičky
+                const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                group.classList.remove('correct', 'incorrect');
+            });
+            actionLogs.push({ time: Date.now(), action: 'hide_hint' });
+        });
+
+        // 2. Smazat číslo
+        document.getElementById('btn-delete').addEventListener('click', () => {
+            if (blockUntilGhostIntroAnswered('btn-delete')) return;
+            if (selectedNodeId !== null) {
+                const node = nodes.find(n => n.id === selectedNodeId);
+                node.degree = null; // Vymaže číslo z dat
+                const activeGroup = svg.querySelector(`g[data-id="${selectedNodeId}"]`);
+                activeGroup.querySelector('.badge-text').textContent = ""; // Vymaže číslo z obrázku
+                activeGroup.classList.remove('correct', 'incorrect');
+                document.getElementById('hint-box-1').style.display = 'none';
+                document.getElementById('hint-box-2').style.display = 'none';
+                document.getElementById('hint-box-3').style.display = 'none';
+                actionLogs.push({ time: Date.now(), action: 'delete_number', node: selectedNodeId });
+            } else {
+                document.getElementById('hint-box-1').style.display = 'none';
+                document.getElementById('hint-box-2').style.display = 'none';
+                showHintBanner('hint-box-3');
+                actionLogs.push({ time: Date.now(), action: 'delete_number_failed_no_selection' });
+            }
+        });
+
+        // 3. Začít znovu
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            if (blockUntilGhostIntroAnswered('btn-restart')) return;
+            nodes.forEach(n => {
+                n.degree = null; // Vymaže všechna data
+                const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                group.querySelector('.badge-text').textContent = "";
+                group.classList.remove('correct', 'incorrect', 'selected');
+            });
+            selectedNodeId = null;
+            feedbackEnabled = false;
+            document.getElementById('hint-box-1').style.display = 'none';
+            document.getElementById('hint-box-2').style.display = 'none';
+            document.getElementById('hint-box-3').style.display = 'none';
+            actionLogs.push({ time: Date.now(), action: 'restart_task' });
+        });
+
+        const showDegreeSequence1OutcomeFeedback = async (allCorrect) => {
+            ghostUI.style.transform = 'scale(1)';
+            ghostButtons.style.flexDirection = 'column';
+            if (allCorrect) {
+                ghostText.innerHTML = 'Tvé řešení bylo správné.';
+            } else {
+                ghostText.innerHTML = 'Bohužel se ti nepodařilo najít správné řešení.<br>Podívej se na správné řešení.';
+            }
+            ghostButtons.innerHTML = '<button type="button" id="degree1-feedback-next" class="ghost-hint-btn">Pokračovat na další úlohu</button>';
+            ghostBubble.classList.add('degree-self-assessment-wide', 'visible');
+            await new Promise((resolve) => {
+                document.getElementById('degree1-feedback-next').addEventListener('click', () => {
+                    ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+                    ghostUI.style.transform = 'scale(0.6)';
+                    resolve();
+                }, { once: true });
+            });
+        };
+
+        const finishDegreeSequence1TrialWithAssessment = async (selfAssessmentCode, selfAssessmentLabel) => {
+            const t = Date.now();
+            actionLogs.push({
+                time: t,
+                action: 'self_assessment_chosen',
+                self_assessment: selfAssessmentCode,
+                self_assessment_label: selfAssessmentLabel
+            });
+            actionLogs.push({ time: t, action: 'finish_task_confirmed' });
+            degreeSelfAssessmentOpen = false;
+            ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+            ghostUI.style.transform = 'scale(0.6)';
+            if (blockUntilGhostIntroAnswered('btn-next')) return;
+            const finalDegreesSnapshot = nodes.map(n => ({
+              id: n.id,
+              degree: n.degree,
+              correct_degree: correctDegrees[n.id],
+              is_correct: n.degree !== null && n.degree === correctDegrees[n.id]
+            }));
+            const allCorrect = finalDegreesSnapshot.every(v => v.is_correct);
+
+            if (!allCorrect) {
+                nodes.forEach(n => {
+                    const activeGroup = svg.querySelector(`g[data-id="${n.id}"]`);
+                    if (!activeGroup) return;
+                    const isCorrect = n.degree !== null && n.degree === correctDegrees[n.id];
+                    activeGroup.classList.remove('correct', 'incorrect', 'selected');
+                    if (!isCorrect) {
+                        activeGroup.classList.add('incorrect');
+                        n.degree = correctDegrees[n.id];
+                        activeGroup.querySelector('.badge-text').textContent = correctDegrees[n.id];
+                    }
+                });
+                actionLogs.push({ time: Date.now(), action: 'degree1_post_feedback_correct_solution_shown' });
+            }
+
+            await showDegreeSequence1OutcomeFeedback(allCorrect);
+            const trialData = {
+                task_name: 'DegreeSequence1',
+                action_logs: actionLogs
+            };
+            console.log('DegreeSequence1: trialData prepared:', trialData);
+            detachWindowScrollLoggerDegree1();
+            jsPsych.finishTrial(trialData);
+        };
+
+        const showDegreeSequence1SelfAssessmentDialog = () => {
+            if (blockUntilGhostIntroAnswered('btn-next')) return;
+            actionLogs.push({ time: Date.now(), action: 'btn_next_clicked_self_assessment_shown' });
+            degreeSelfAssessmentOpen = true;
+            setDigitoolSelfAssessmentUiLock(true);
+            ghostUI.style.transform = 'scale(1)';
+            ghostText.innerHTML = 'Myslíš si, že máš úlohu správně?';
+            ghostButtons.style.flexDirection = 'column';
+            ghostButtons.innerHTML = `
+              <button type="button" id="degree-self-continue" class="ghost-hint-btn">Chci ještě pokračovat v řešení.</button>
+              <button type="button" id="degree-self-sure-correct" class="ghost-hint-btn">Vím jistě, že mám úlohu správně.</button>
+              <button type="button" id="degree-self-correct" class="ghost-hint-btn">Myslím si, že mám úlohu správně.</button>
+              <button type="button" id="degree-self-unsure" class="ghost-hint-btn">Nevím jistě, zda mám úlohu správně.</button>
+              <button type="button" id="degree-self-error" class="ghost-hint-btn">Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení.</button>
+            `;
+            ghostBubble.classList.add('degree-self-assessment-wide', 'visible');
+
+            document.getElementById('degree-self-continue').addEventListener('click', () => {
+                actionLogs.push({
+                    time: Date.now(),
+                    action: 'self_assessment_chosen',
+                    self_assessment: 'continue_solving',
+                    self_assessment_label: 'Chci ještě pokračovat v řešení.'
+                });
+                degreeSelfAssessmentOpen = false;
+                setDigitoolSelfAssessmentUiLock(false);
+                ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+                ghostUI.style.transform = 'scale(0.6)';
+                ghostText.innerHTML = 'Pokud budeš potřebovat nápovědu,<br>klikni na mě.';
+                ghostButtons.innerHTML = '';
+            });
+            document.getElementById('degree-self-sure-correct').addEventListener('click', () => {
+                finishDegreeSequence1TrialWithAssessment('sure_correct', 'Vím jistě, že mám úlohu správně.');
+            });
+            document.getElementById('degree-self-correct').addEventListener('click', () => {
+                finishDegreeSequence1TrialWithAssessment('think_correct', 'Myslím si, že mám úlohu správně.');
+            });
+            document.getElementById('degree-self-unsure').addEventListener('click', () => {
+                finishDegreeSequence1TrialWithAssessment('unsure', 'Nevím jistě, zda mám úlohu správně.');
+            });
+            document.getElementById('degree-self-error').addEventListener('click', () => {
+                finishDegreeSequence1TrialWithAssessment('think_error', 'Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení.');
+            });
+        };
+
+       // 4. Další úloha
+        document.getElementById('btn-next').addEventListener('click', () => {
+            if (degreeSelfAssessmentOpen) return;
+            showDegreeSequence1SelfAssessmentDialog();
+        });
+
+        setupDigitoolIdleGhostPrompt({
+          logAction: (action, detail = {}) => actionLogs.push({ time: Date.now(), action, ...detail }),
+          isIdleAllowed: () =>
+            ghostState === 3 &&
+            !degreeSelfAssessmentOpen &&
+            !document.body.classList.contains('digitool-self-assessment-lock') &&
+            !ghostBubble.classList.contains('degree-self-assessment-wide'),
+          ghostText,
+          ghostButtons,
+          ghostBubble,
+          ghostUI,
+          defaultGhostHtml: 'Pokud budeš potřebovat nápovědu,<br>klikni na mě.',
+          defaultGhostButtonsHtml: '',
+          onRequestHelp: () => {
+            ghostCharacter.click();
+          }
+        });
+      }
+    };
+
+
+    // ==========================================
+    // ÚLOHA 2: DegreeSequenceTask2 (S přesouváním - Původní graf)
+    // ==========================================
+    const DegreeSequenceTask2 = {
+      type: jsPsychHtmlButtonResponse,
+      choices: [],
+      data: { task_name: 'DegreeSequenceTask2' },
+      stimulus: () => {
+        return `
+          <div id="connect-container">
+            <div id="ghost-ui" style="position: fixed; bottom: 20px; left: 20px; display: flex; align-items: flex-end; z-index: 999; transition: transform 0.5s ease; transform: scale(0.6); transform-origin: bottom left;">
+              <div id="ghost-character" style="text-align: center; animation: float 3s ease-in-out infinite; cursor: pointer;">
+                <div style="font-size: 100px; line-height: 1;">👻</div>
+                <div style="font-weight: bold; background: rgba(255,255,255,0.8); padding: 2px 8px; border-radius: 10px;"></div>
+              </div>
+            <div id="ghost-bubble" class="ghost-bubble">
+              <div id="ghost-text" class="ghost-text">Klikni na ducha pro nápovědu.</div>
+                <div id="ghost-buttons" style="display: flex; gap: 10px; justify-content: center; flex-direction: column;"></div>
+                <div style="position: absolute; bottom: -15px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #007bff;"></div>
+                <div style="position: absolute; bottom: -10px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #fff;"></div>
+              </div>
+            </div>
+
+            <div class="prompt">
+              <h2>Spoj hrady čarami tak, aby z každého hradu vedlo tolik cest, jako číslo, které je u něj napsané.</h2>
+              <p>Kliknutím na dva hrady je spojíš. Hrady můžeš i přesouvat.</p>
+            </div>
+
+            <div id="hint-box-1" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+              Pro spojení dvou hradů klikni na jeden hrad a potom na druhý.
+            </div>
+
+            <div id="hint-box-2" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+              Když spojíš některé z hradů cestou, ukážu ti, zda to máš dobře. K zeleně obarveným hradům vede správný počet cest, červeně obarvené hrady potřebují víc nebo míň cest.
+            </div>
+
+            <div id="hint-box-3" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+              Pro smazání cesty znovu klikni na dva hrady, které ji spojují.
+            </div>
+
+            <div class="degree-plot-column degree-plot-column--centered">
+            <svg id="connect-graph" class="svg-container" viewBox="0 0 480 360" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+            <div class="ui">
+              <button id="btn-hide-hint" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Smazat nápovědu</button>
+              <button id="btn-delete-road" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Smazat cestu</button>
+              <button id="btn-restart" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Začít znovu</button>
+              <button id="btn-finish" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Další úloha</button>
+            </div>
+          </div>
+        `;
+      },
+      on_load: () => {
+        setDigitoolSelfAssessmentUiLock(false);
+        disposeDigitoolIdleTimer();
+        console.log('DegreeSequenceTask2: on_load started.');
+        const svg = document.getElementById('connect-graph');
+        const svgNS = "http://www.w3.org/2000/svg";
+        
+        const nodes = [
+  	      {id: 1, label: "2", x: 120, y: 60},
+	      {id: 2, label: "4", x: 240, y: 60},
+	      {id: 3, label: "3", x: 360, y: 60},
+	      {id: 4, label: "3", x: 120, y: 180},
+	      {id: 5, label: "3", x: 240, y: 180},
+	      {id: 6, label: "1", x: 360, y: 180},
+	      {id: 7, label: "1", x: 120, y: 300},
+	      {id: 8, label: "1", x: 240, y: 300}
+	    ];
+        
+        // Uložit originální pozice pro restart
+        nodes.forEach(n => {
+            n.originalX = n.x;
+            n.originalY = n.y;
+        });
+        
+        let edges = [];
+        let selectedNode = null;
+        let actionLogs = [];
+        DigitoolActionLogStore.wireArray(respondentIdFromUrl, 'degree', actionLogs, {
+          taskName: 'DegreeSequence2'
+        });
+        actionLogs.push({ action: 'task_loaded', task_name: 'DegreeSequence2' });
+        const detachWindowScrollLoggerDegree2 = attachWindowScrollLogger((action, detail) => {
+            actionLogs.push({ action, ...detail });
+        }, 'DegreeSequenceTask2');
+        
+        let draggedNodeId = null;
+        let hasMoved = false;
+        let startPoint = { x: 0, y: 0 };
+        let feedbackEnabled = false;
+        let deleteMode = false;
+        let degree2SelfAssessmentOpen = false;
+
+        const hideAllHints = () => {
+            document.getElementById('hint-box-1').style.display = 'none';
+            document.getElementById('hint-box-2').style.display = 'none';
+            document.getElementById('hint-box-3').style.display = 'none';
+            deleteMode = false;
+        };
+
+        const updateConnectedDegrees = () => {
+            nodes.forEach(n => {
+                const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                const degree = edges.filter(e => e.u === n.id || e.v === n.id).length;
+                const targetDegree = parseInt(n.label, 10);
+                group.classList.remove('correct', 'incorrect');
+                if (feedbackEnabled) {
+                    if (degree === targetDegree) group.classList.add('correct');
+                    else group.classList.add('incorrect');
+                }
+            });
+        };
+        const hideEdgeRequiredHint = () => {
+            const hint = document.getElementById('hint-box-3');
+            if (!hint) return;
+            if (hint.textContent && hint.textContent.includes('Nejdřív musíš vytvořit nebo smazat alespoň jednu cestu.')) {
+                hint.style.display = 'none';
+            }
+        };
+
+        const drawEdges = () => {
+            svg.querySelectorAll('.edge, .road').forEach(e => e.remove());
+            const cross2 = (ax, ay, bx, by) => (ax * by) - (ay * bx);
+            const edgeOverlapsOnLine = (edgeA, edgeB) => {
+                const aU = nodes.find(n => n.id === edgeA.u);
+                const aV = nodes.find(n => n.id === edgeA.v);
+                const bU = nodes.find(n => n.id === edgeB.u);
+                const bV = nodes.find(n => n.id === edgeB.v);
+                if (!aU || !aV || !bU || !bV) return false;
+                const rx = aV.x - aU.x;
+                const ry = aV.y - aU.y;
+                const segLen = Math.hypot(rx, ry);
+                if (segLen < 1e-6) return false;
+                const tol = 1.5;
+                const c1 = Math.abs(cross2(rx, ry, bU.x - aU.x, bU.y - aU.y));
+                const c2 = Math.abs(cross2(rx, ry, bV.x - aU.x, bV.y - aU.y));
+                if (c1 > tol * segLen || c2 > tol * segLen) return false;
+                const useX = Math.abs(rx) >= Math.abs(ry);
+                const a0 = useX ? aU.x : aU.y;
+                const a1 = useX ? aV.x : aV.y;
+                const b0 = useX ? bU.x : bU.y;
+                const b1 = useX ? bV.x : bV.y;
+                const aMin = Math.min(a0, a1);
+                const aMax = Math.max(a0, a1);
+                const bMin = Math.min(b0, b1);
+                const bMax = Math.max(b0, b1);
+                const overlap = Math.min(aMax, bMax) - Math.max(aMin, bMin);
+                return overlap > 10;
+            };
+            const curveVotes = new Array(edges.length).fill(0);
+            for (let i = 0; i < edges.length; i++) {
+                for (let j = i + 1; j < edges.length; j++) {
+                    if (!edgeOverlapsOnLine(edges[i], edges[j])) continue;
+                    curveVotes[i] += 1;
+                    curveVotes[j] -= 1;
+                }
+            }
+            edges.forEach((edge, edgeIndex) => {
+                const nodeU = nodes.find(n => n.id === edge.u);
+                const nodeV = nodes.find(n => n.id === edge.v);
+                const dx = nodeV.x - nodeU.x;
+                const dy = nodeV.y - nodeU.y;
+                const len = Math.hypot(dx, dy) || 1;
+                const nx = -dy / len;
+                const ny = dx / len;
+                const curveDir = Math.sign(curveVotes[edgeIndex]);
+                const curveAmount = curveDir === 0 ? 0 : Math.max(14, Math.min(28, len * 0.12)) * curveDir;
+
+                const roadGroup = document.createElementNS(svgNS, 'g');
+                roadGroup.classList.add('road');
+
+                const asphalt = document.createElementNS(svgNS, curveAmount === 0 ? 'line' : 'path');
+                if (curveAmount === 0) {
+                    asphalt.setAttribute('x1', nodeU.x); asphalt.setAttribute('y1', nodeU.y);
+                    asphalt.setAttribute('x2', nodeV.x); asphalt.setAttribute('y2', nodeV.y);
+                } else {
+                    const cx = ((nodeU.x + nodeV.x) / 2) + (nx * curveAmount);
+                    const cy = ((nodeU.y + nodeV.y) / 2) + (ny * curveAmount);
+                    asphalt.setAttribute('d', `M ${nodeU.x} ${nodeU.y} Q ${cx} ${cy} ${nodeV.x} ${nodeV.y}`);
+                    asphalt.setAttribute('fill', 'none');
+                }
+                asphalt.setAttribute('stroke', '#666');
+                asphalt.setAttribute('stroke-width', '14');
+                asphalt.setAttribute('stroke-linecap', 'round');
+
+                const centerLine = document.createElementNS(svgNS, curveAmount === 0 ? 'line' : 'path');
+                if (curveAmount === 0) {
+                    centerLine.setAttribute('x1', nodeU.x); centerLine.setAttribute('y1', nodeU.y);
+                    centerLine.setAttribute('x2', nodeV.x); centerLine.setAttribute('y2', nodeV.y);
+                } else {
+                    const cx = ((nodeU.x + nodeV.x) / 2) + (nx * curveAmount);
+                    const cy = ((nodeU.y + nodeV.y) / 2) + (ny * curveAmount);
+                    centerLine.setAttribute('d', `M ${nodeU.x} ${nodeU.y} Q ${cx} ${cy} ${nodeV.x} ${nodeV.y}`);
+                    centerLine.setAttribute('fill', 'none');
+                }
+                centerLine.setAttribute('stroke', '#fff');
+                centerLine.setAttribute('stroke-width', '2');
+                centerLine.setAttribute('stroke-dasharray', '8,8');
+                centerLine.setAttribute('stroke-linecap', 'round');
+
+                roadGroup.appendChild(asphalt);
+                roadGroup.appendChild(centerLine);
+                svg.insertBefore(roadGroup, svg.firstChild);
+            });
+        };
+
+        const handleNodeClick = (clickedId, group) => {
+            if (selectedNode === null) {
+                selectedNode = clickedId;
+                group.classList.remove('correct', 'incorrect');
+                group.classList.add('selected');
+                actionLogs.push({ time: Date.now(), action: 'select_first_node', node: clickedId });
+                if (deleteMode) {
+                    showHintBanner('hint-box-3');
+                    document.getElementById('hint-box-3').textContent = 'Nyní klikni na druhý hrad pro smazání cesty.';
+                    return;
+                }
+            } else if (selectedNode === clickedId) {
+                selectedNode = null;
+                group.classList.remove('selected');
+                if (feedbackEnabled) {
+                    const degree = edges.filter(e => e.u === clickedId || e.v === clickedId).length;
+                    const targetDegree = parseInt(nodes.find(n => n.id === clickedId).label, 10);
+                    if (degree === targetDegree) group.classList.add('correct');
+                    else group.classList.add('incorrect');
+                }
+                actionLogs.push({ time: Date.now(), action: 'deselect_node', node: clickedId });
+            } else {
+                const existingEdgeIndex = edges.findIndex(e => 
+                    (e.u === selectedNode && e.v === clickedId) || (e.u === clickedId && e.v === selectedNode)
+                );
+
+                if (deleteMode) {
+                    if (existingEdgeIndex !== -1) {
+                        edges.splice(existingEdgeIndex, 1);
+                        hideEdgeRequiredHint();
+                        actionLogs.push({ time: Date.now(), action: 'delete_edge', from: selectedNode, to: clickedId });
+                    } else {
+                        actionLogs.push({ time: Date.now(), action: 'delete_edge_failed_no_edge', from: selectedNode, to: clickedId });
+                    }
+                    deleteMode = false;
+                    document.getElementById('hint-box-3').style.display = 'none';
+                    svg.querySelector(`g[data-id="${selectedNode}"]`).classList.remove('selected');
+                    selectedNode = null;
+                    drawEdges();
+                    if (feedbackEnabled) updateConnectedDegrees();
+                    return;
+                }
+
+                if (existingEdgeIndex !== -1) {
+                    edges.splice(existingEdgeIndex, 1);
+                    hideEdgeRequiredHint();
+                    actionLogs.push({ time: Date.now(), action: 'remove_edge', from: selectedNode, to: clickedId });
+                } else {
+                    edges.push({ u: selectedNode, v: clickedId });
+                    hideEdgeRequiredHint();
+                    actionLogs.push({ time: Date.now(), action: 'add_edge', from: selectedNode, to: clickedId });
+                }
+
+                svg.querySelector(`g[data-id="${selectedNode}"]`).classList.remove('selected');
+                selectedNode = null;
+                drawEdges();
+                if (feedbackEnabled) updateConnectedDegrees();
+            }
+        };
+
+        nodes.forEach(node => {
+            const group = document.createElementNS(svgNS, 'g');
+            group.classList.add('node');
+            group.dataset.id = node.id;
+
+            const highlight = document.createElementNS(svgNS, 'circle');
+            highlight.setAttribute('cx', node.x); highlight.setAttribute('cy', node.y);
+            highlight.setAttribute('r', 32);
+            highlight.classList.add('town-highlight');
+
+            const icon = document.createElementNS(svgNS, 'text');
+            icon.setAttribute('x', node.x); icon.setAttribute('y', node.y);
+            icon.textContent = '🏰';
+            icon.classList.add('town-icon');
+
+            const badgeBg = document.createElementNS(svgNS, 'circle');
+            badgeBg.setAttribute('cx', node.x + 18); badgeBg.setAttribute('cy', node.y - 18);
+            badgeBg.setAttribute('r', 12);
+            badgeBg.setAttribute('fill', '#ffffff');
+            badgeBg.setAttribute('stroke', '#333');
+            badgeBg.setAttribute('stroke-width', '2');
+
+            const badgeText = document.createElementNS(svgNS, 'text');
+            badgeText.setAttribute('x', node.x + 18); badgeText.setAttribute('y', node.y - 18);
+            badgeText.textContent = node.label;
+            badgeText.setAttribute('class', 'badge-text');
+            badgeText.setAttribute('font-family', 'sans-serif');
+            badgeText.setAttribute('font-weight', 'bold');
+            badgeText.setAttribute('font-size', '14px');
+            badgeText.setAttribute('text-anchor', 'middle');
+            badgeText.setAttribute('dominant-baseline', 'central');
+
+            group.appendChild(highlight);
+            group.appendChild(icon);
+            group.appendChild(badgeBg);
+            group.appendChild(badgeText);
+            svg.appendChild(group);
+
+            group.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                draggedNodeId = node.id;
+                hasMoved = false;
+                startPoint = { x: e.clientX, y: e.clientY };
+                e.preventDefault();
+            }, { passive: false });
+
+            group.addEventListener('click', () => {
+                if (hasMoved) {
+                    hasMoved = false;
+                    return;
+                }
+                handleNodeClick(node.id, group);
+            });
+        });
+
+        svg.addEventListener('pointermove', (e) => {
+            if (draggedNodeId === null) return;
+            const dx = e.clientX - startPoint.x;
+            const dy = e.clientY - startPoint.y;
+
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                hasMoved = true;
+            }
+
+            if (hasMoved) {
+                const pt = svg.createSVGPoint();
+                pt.x = e.clientX;
+                pt.y = e.clientY;
+                const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+                const nodeObj = nodes.find(n => n.id === draggedNodeId);
+                nodeObj.x = svgP.x;
+                nodeObj.y = svgP.y;
+
+                const group = svg.querySelector(`g[data-id="${draggedNodeId}"]`);
+                const highlight = group.querySelector('.town-highlight');
+                const icon = group.querySelector('.town-icon');
+                const badgeBg = group.querySelector('circle:not(.town-highlight)');
+                const badgeText = group.querySelector('.badge-text');
+
+                highlight.setAttribute('cx', nodeObj.x);
+                highlight.setAttribute('cy', nodeObj.y);
+                icon.setAttribute('x', nodeObj.x);
+                icon.setAttribute('y', nodeObj.y);
+                badgeBg.setAttribute('cx', nodeObj.x + 18);
+                badgeBg.setAttribute('cy', nodeObj.y - 18);
+                badgeText.setAttribute('x', nodeObj.x + 18);
+                badgeText.setAttribute('y', nodeObj.y - 18);
+
+                group.querySelector('text').setAttribute('y', nodeObj.y);
+
+                drawEdges();
+            }
+        });
+
+        const endConnectDrag = () => {
+            if (draggedNodeId !== null) {
+                const nodeObj = nodes.find(n => n.id === draggedNodeId);
+
+                if (hasMoved) {
+                    actionLogs.push({ time: Date.now(), action: 'move_node', node: draggedNodeId, new_x: Math.round(nodeObj.x), new_y: Math.round(nodeObj.y) });
+                }
+                draggedNodeId = null;
+            }
+        };
+
+        svg.addEventListener('pointerup', endConnectDrag);
+        svg.addEventListener('pointercancel', endConnectDrag);
+
+        const ghostText = document.getElementById('ghost-text');
+        const ghostButtons = document.getElementById('ghost-buttons');
+        const ghostBubble = document.getElementById('ghost-bubble');
+        const ghostUI = document.getElementById('ghost-ui');
+        const ghostCharacter = document.getElementById('ghost-character');
+
+        ghostCharacter.addEventListener('click', () => {
+            if (degree2SelfAssessmentOpen) return;
+            actionLogs.push({ time: Date.now(), action: 'ghost_clicked_for_hint' });
+            ghostText.textContent = 'Jak ti mohu pomoci?';
+            ghostButtons.innerHTML = `
+                <button id="hint-1" class="ghost-hint-btn">Nevím, jak spojovat hrady cestami.</button>
+                <button id="hint-2" class="ghost-hint-btn">Nevím, jestli mám hrady správně spojené.</button>
+                <button id="ghost-hint-close" class="ghost-hint-btn" style="background: #6c757d;">Zavřít nápovědu</button>
+            `;
+            ghostButtons.style.flexDirection = 'column';
+            ghostBubble.classList.add('visible');
+            ghostUI.style.transform = 'scale(1)';
+
+            document.getElementById('hint-1').addEventListener('click', () => {
+                hideAllHints();
+                showHintBanner('hint-box-1');
+                ghostBubble.classList.remove('visible');
+                ghostUI.style.transform = 'scale(0.6)';
+                actionLogs.push({ time: Date.now(), action: 'hint_1_used' });
+            });
+            document.getElementById('hint-2').addEventListener('click', () => {
+                hideAllHints();
+                showHintBanner('hint-box-2');
+                feedbackEnabled = true;
+                updateConnectedDegrees();
+                ghostBubble.classList.remove('visible');
+                ghostUI.style.transform = 'scale(0.6)';
+                actionLogs.push({ time: Date.now(), action: 'hint_2_used_feedback_enabled' });
+            });
+
+            // ZAVŘÍT BEZ VÝBĚRU RADY
+            document.getElementById('ghost-hint-close').addEventListener('click', () => {
+                ghostBubble.classList.remove('visible');
+                ghostUI.style.transform = 'scale(0.6)';
+                actionLogs.push({ time: Date.now(), action: 'ghost_hint_closed' });
+            });
+        });
+        console.log('DegreeSequenceTask2: ghostCharacter click handler finished.');
+
+        // --- PŘIDANÉ EVENT LISTENERS PRO TLAČÍTKA ---
+        document.getElementById('btn-hide-hint').addEventListener('click', () => {
+            hideAllHints();
+            feedbackEnabled = false; // Vypne barvičky
+            nodes.forEach(n => { // Smaže aktuální barvičky
+                const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                group.classList.remove('correct', 'incorrect');
+            });
+            actionLogs.push({ time: Date.now(), action: 'hide_hint' });
+        });
+
+        document.getElementById('btn-delete-road').addEventListener('click', () => {
+            hideAllHints();
+            if (edges.length === 0) {
+            showHintBanner('hint-box-3');
+            document.getElementById('hint-box-3').textContent = 'Nejdřív musíš vytvořit nebo smazat alespoň jednu cestu.';
+            actionLogs.push({ time: Date.now(), action: 'delete_road_mode_rejected_no_edges' });
+            return;
+            }
+            deleteMode = true;
+            showHintBanner('hint-box-3');
+            document.getElementById('hint-box-3').textContent = 'Pro smazání cesty znovu klikni na dva hrady, která ji spojují.';
+            actionLogs.push({ time: Date.now(), action: 'delete_road_mode_activated' });
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            if (edges.length === 0) {
+                showHintBanner('hint-box-3');
+                document.getElementById('hint-box-3').textContent = 'Nejdřív musíš vytvořit nebo smazat alespoň jednu cestu.';
+                actionLogs.push({ time: Date.now(), action: 'restart_rejected_no_edges' });
+                return;
+            }
+            edges = [];
+            nodes.forEach(n => {
+                n.x = n.originalX || n.x; // Reset pozic, pokud máme originální
+                n.y = n.originalY || n.y;
+                const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                group.classList.remove('correct', 'incorrect', 'selected');
+                const highlight = group.querySelector('.town-highlight');
+                const icon = group.querySelector('.town-icon');
+                const badgeBg = group.querySelector('circle:not(.town-highlight)');
+                const badgeText = group.querySelector('.badge-text');
+                highlight.setAttribute('cx', n.x);
+                highlight.setAttribute('cy', n.y);
+                icon.setAttribute('x', n.x);
+                icon.setAttribute('y', n.y);
+                badgeBg.setAttribute('cx', n.x + 18);
+                badgeBg.setAttribute('cy', n.y - 18);
+                badgeText.setAttribute('x', n.x + 18);
+                badgeText.setAttribute('y', n.y - 18);
+            });
+            selectedNode = null;
+            feedbackEnabled = false;
+            drawEdges();
+            hideAllHints();
+            actionLogs.push({ time: Date.now(), action: 'restart_task' });
+        });
+
+        const showDegreeSequence2OutcomeFeedback = async (allCorrect) => {
+            ghostUI.style.transform = 'scale(1)';
+            ghostButtons.style.flexDirection = 'column';
+            if (allCorrect) {
+                ghostText.innerHTML = 'Tvé řešení bylo správné.';
+            } else {
+                ghostText.innerHTML = 'Bohužel se ti nepodařilo najít správné řešení.<br>Podívej se, které hrady mají špatný počet cest.';
+            }
+            ghostButtons.innerHTML = '<button type="button" id="degree2-feedback-next" class="ghost-hint-btn">Pokračovat na další úlohu</button>';
+            ghostBubble.classList.add('degree-self-assessment-wide', 'visible');
+            await new Promise((resolve) => {
+                document.getElementById('degree2-feedback-next').addEventListener('click', () => {
+                    ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+                    ghostUI.style.transform = 'scale(0.6)';
+                    resolve();
+                }, { once: true });
+            });
+        };
+
+        const finishDegreeSequence2TrialWithAssessment = async (selfAssessmentCode, selfAssessmentLabel) => {
+            // Výpočet finální správnosti všech vrcholů
+            const final_correctness = nodes.map(n => {
+                const currentDegree = edges.filter(e => e.u === n.id || e.v === n.id).length;
+                const targetDegree = parseInt(n.label, 10);
+                return { 
+                    node_id: n.id, 
+                    target_degree: targetDegree, 
+                    actual_degree: currentDegree, 
+                    is_correct: currentDegree === targetDegree 
+                };
+            });
+            const all_correct = final_correctness.every(v => v.is_correct);
+
+            const t = Date.now();
+            actionLogs.push({
+                time: t,
+                action: 'self_assessment_chosen',
+                self_assessment: selfAssessmentCode,
+                self_assessment_label: selfAssessmentLabel
+            });
+            actionLogs.push({ time: t, action: 'finish_task_confirmed' });
+            console.log('DegreeSequenceTask2: btn-finish clicked.');
+            degree2SelfAssessmentOpen = false;
+            ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+            ghostUI.style.transform = 'scale(0.6)';
+
+            if (!all_correct) {
+                nodes.forEach(n => {
+                    const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                    if (!group) return;
+                    const currentDegree = edges.filter(e => e.u === n.id || e.v === n.id).length;
+                    const targetDegree = parseInt(n.label, 10);
+                    group.classList.remove('correct', 'incorrect', 'selected');
+                    if (currentDegree !== targetDegree) group.classList.add('incorrect');
+                });
+                actionLogs.push({ time: Date.now(), action: 'degree2_post_feedback_correct_solution_shown' });
+            }
+
+            await showDegreeSequence2OutcomeFeedback(all_correct);
+
+            const trialData = {
+                task_name: 'DegreeSequenceTask2',
+                action_logs: actionLogs
+            };
+            console.log('DegreeSequenceTask2: trialData prepared:', trialData);
+            detachWindowScrollLoggerDegree2();
+            jsPsych.finishTrial(trialData);
+        };
+
+        const showDegreeSequence2SelfAssessmentDialog = () => {
+            actionLogs.push({ time: Date.now(), action: 'btn_next_clicked_self_assessment_shown' });
+            degree2SelfAssessmentOpen = true;
+            setDigitoolSelfAssessmentUiLock(true);
+            ghostUI.style.transform = 'scale(1)';
+            ghostText.innerHTML = 'Myslíš si, že máš úlohu správně?';
+            ghostButtons.style.flexDirection = 'column';
+            ghostButtons.innerHTML = `
+              <button type="button" id="degree2-self-continue" class="ghost-hint-btn">Chci ještě pokračovat v řešení.</button>
+              <button type="button" id="degree2-self-sure-correct" class="ghost-hint-btn">Vím jistě, že mám úlohu správně.</button>
+              <button type="button" id="degree2-self-correct" class="ghost-hint-btn">Myslím si, že mám úlohu správně.</button>
+              <button type="button" id="degree2-self-unsure" class="ghost-hint-btn">Nevím jistě, zda mám úlohu správně.</button>
+              <button type="button" id="degree2-self-error" class="ghost-hint-btn">Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení.</button>
+            `;
+            ghostBubble.classList.add('degree-self-assessment-wide', 'visible');
+
+            document.getElementById('degree2-self-continue').addEventListener('click', () => {
+                actionLogs.push({
+                    time: Date.now(),
+                    action: 'self_assessment_chosen',
+                    self_assessment: 'continue_solving',
+                    self_assessment_label: 'Chci ještě pokračovat v řešení.'
+                });
+                degree2SelfAssessmentOpen = false;
+                setDigitoolSelfAssessmentUiLock(false);
+                ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+                ghostUI.style.transform = 'scale(0.6)';
+                ghostText.innerHTML = 'Klikni na ducha pro nápovědu.';
+                ghostButtons.innerHTML = '';
+            });
+            document.getElementById('degree2-self-sure-correct').addEventListener('click', () => {
+                finishDegreeSequence2TrialWithAssessment('sure_correct', 'Vím jistě, že mám úlohu správně.');
+            });
+            document.getElementById('degree2-self-correct').addEventListener('click', () => {
+                finishDegreeSequence2TrialWithAssessment('think_correct', 'Myslím si, že mám úlohu správně.');
+            });
+            document.getElementById('degree2-self-unsure').addEventListener('click', () => {
+                finishDegreeSequence2TrialWithAssessment('unsure', 'Nevím jistě, zda mám úlohu správně.');
+            });
+            document.getElementById('degree2-self-error').addEventListener('click', () => {
+                finishDegreeSequence2TrialWithAssessment('think_error', 'Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení.');
+            });
+        };
+
+        document.getElementById('btn-finish').addEventListener('click', () => {
+            if (degree2SelfAssessmentOpen) return;
+            showDegreeSequence2SelfAssessmentDialog();
+        });
+
+        setupDigitoolIdleGhostPrompt({
+          logAction: (action, detail = {}) => actionLogs.push({ time: Date.now(), action, ...detail }),
+          isIdleAllowed: () =>
+            !degree2SelfAssessmentOpen &&
+            !document.body.classList.contains('digitool-self-assessment-lock') &&
+            !ghostBubble.classList.contains('degree-self-assessment-wide'),
+          ghostText,
+          ghostButtons,
+          ghostBubble,
+          ghostUI,
+          defaultGhostHtml: 'Klikni na ducha pro nápovědu.',
+          defaultGhostButtonsHtml: '',
+          onRequestHelp: () => {
+            ghostCharacter.click();
+          }
+        });
+        console.log('DegreeSequenceTask2: on_load finished, btn-finish listener attached.');
+      }
+    };
+
+    // ==========================================
+    // ÚLOHA 3: DegreeSequenceTask3 (Identická s Task 2, jiný graf)
+    // ==========================================
+    const DegreeSequenceTask3 = {
+      type: jsPsychHtmlButtonResponse,
+      choices: [],
+      data: { task_name: 'DegreeSequenceTask3' },
+      stimulus: () => {
+        return `
+          <div id="connect-container">
+            <div id="ghost-ui" style="position: fixed; bottom: 20px; left: 20px; display: flex; align-items: flex-end; z-index: 999; transition: transform 0.5s ease; transform: scale(0.6); transform-origin: bottom left;">
+              <div id="ghost-character" style="text-align: center; animation: float 3s ease-in-out infinite; cursor: pointer;">
+                <div style="font-size: 100px; line-height: 1;">👻</div>
+                <div style="font-weight: bold; background: rgba(255,255,255,0.8); padding: 2px 8px; border-radius: 10px;"></div>
+              </div>
+            <div id="ghost-bubble" class="ghost-bubble">
+              <div id="ghost-text" class="ghost-text">Klikni na ducha pro nápovědu.</div>
+                <div id="ghost-buttons" style="display: flex; gap: 10px; justify-content: center; flex-direction: column;"></div>
+                <div style="position: absolute; bottom: -15px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #007bff;"></div>
+                <div style="position: absolute; bottom: -10px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #fff;"></div>
+              </div>
+            </div>
+
+            <div class="prompt">
+              <h2>Spoj hrady čarami tak, aby z každého hradu vedlo tolik cest, jako číslo, které je u něj napsané.</h2>
+              <p>Kliknutím na dva hrady je spojíš. Hrady můžeš i přesouvat.</p>
+            </div>
+
+            <div id="hint-box-1" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+              Pro spojení dvou hradů klikni na jeden hrad a potom na druhý.
+            </div>
+
+            <div id="hint-box-2" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+              Když spojíš některé z hradů cestou, ukážu ti, zda to máš dobře. K zeleně obarveným hradům vede správný počet cest, červeně obarvené hrady potřebují víc nebo míň cest.
+            </div>
+
+            <div id="hint-box-3" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+              Pro smazání cesty znovu klikni na dva hrady, které ji spojují.
+            </div>
+
+            <div class="degree-plot-column degree-plot-column--centered">
+            <svg id="connect-graph-3" class="svg-container" viewBox="0 0 480 360" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+            <div class="ui">
+              <button id="btn-hide-hint-3" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Smazat nápovědu</button>
+              <button id="btn-delete-road-3" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Smazat cestu</button>
+              <button id="btn-restart-3" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Začít znovu</button>
+              <button id="btn-finish-3" class="custom-task-btn" style="padding: 10px 15px; border: 2px solid #333; border-radius: 8px; background: #333; color: white; cursor: pointer; font-weight: bold; margin: 5px;">Ukončit úlohu</button>
+            </div>
+          </div>
+        `;
+      },
+      on_load: () => {
+        setDigitoolSelfAssessmentUiLock(false);
+        disposeDigitoolIdleTimer();
+        console.log('DegreeSequenceTask3: on_load started.');
+        const svg = document.getElementById('connect-graph-3');
+        const svgNS = "http://www.w3.org/2000/svg";
+        
+        // Ukázkový jiný graf (kosočtverec) - můžeš si upravit
+        const nodes = [
+          {id: 1, label: "3", x: 120, y: 300},
+          {id: 2, label: "5", x: 240, y: 300},
+          {id: 3, label: "2", x: 360, y: 300},
+          {id: 4, label: "2", x: 60, y: 180},
+          {id: 5, label: "6", x: 180, y: 180},
+          {id: 6, label: "5", x: 300, y: 180},
+          {id: 7, label: "2", x: 420, y: 180},
+          {id: 8, label: "2", x: 120, y: 60},
+          {id: 9, label: "4", x: 240, y: 60},
+          {id: 10, label: "1", x: 360, y: 60}
+        ];
+        
+        nodes.forEach(n => { n.originalX = n.x; n.originalY = n.y; });
+        
+        let edges = [];
+        let selectedNode = null;
+        let actionLogs = [];
+        DigitoolActionLogStore.wireArray(respondentIdFromUrl, 'degree', actionLogs, {
+          taskName: 'DegreeSequence3'
+        });
+        actionLogs.push({ action: 'task_loaded', task_name: 'DegreeSequence3' });
+        const detachWindowScrollLoggerDegree3 = attachWindowScrollLogger((action, detail) => {
+            actionLogs.push({ action, ...detail });
+        }, 'DegreeSequenceTask3');
+        let draggedNodeId = null;
+        let hasMoved = false;
+        let startPoint = { x: 0, y: 0 };
+        let feedbackEnabled = false;
+        let deleteMode = false;
+        let degree3SelfAssessmentOpen = false;
+
+        const hideAllHints = () => {
+            document.getElementById('hint-box-1').style.display = 'none';
+            document.getElementById('hint-box-2').style.display = 'none';
+            document.getElementById('hint-box-3').style.display = 'none';
+            deleteMode = false;
+        };
+
+        const updateConnectedDegrees = () => {
+            nodes.forEach(n => {
+                const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                const degree = edges.filter(e => e.u === n.id || e.v === n.id).length;
+                const targetDegree = parseInt(n.label, 10);
+                group.classList.remove('correct', 'incorrect');
+                if (feedbackEnabled) {
+                    if (degree === targetDegree) group.classList.add('correct');
+                    else group.classList.add('incorrect');
+                }
+            });
+        };
+        const hideEdgeRequiredHint = () => {
+            const hint = document.getElementById('hint-box-3');
+            if (!hint) return;
+            if (hint.textContent && hint.textContent.includes('Nejdřív musíš vytvořit nebo smazat alespoň jednu cestu.')) {
+                hint.style.display = 'none';
+            }
+        };
+
+        const drawEdges = () => {
+            svg.querySelectorAll('.edge, .road').forEach(e => e.remove());
+            const cross2 = (ax, ay, bx, by) => (ax * by) - (ay * bx);
+            const edgeOverlapsOnLine = (edgeA, edgeB) => {
+                const aU = nodes.find(n => n.id === edgeA.u);
+                const aV = nodes.find(n => n.id === edgeA.v);
+                const bU = nodes.find(n => n.id === edgeB.u);
+                const bV = nodes.find(n => n.id === edgeB.v);
+                if (!aU || !aV || !bU || !bV) return false;
+                const rx = aV.x - aU.x;
+                const ry = aV.y - aU.y;
+                const segLen = Math.hypot(rx, ry);
+                if (segLen < 1e-6) return false;
+                const tol = 1.5;
+                const c1 = Math.abs(cross2(rx, ry, bU.x - aU.x, bU.y - aU.y));
+                const c2 = Math.abs(cross2(rx, ry, bV.x - aU.x, bV.y - aU.y));
+                if (c1 > tol * segLen || c2 > tol * segLen) return false;
+                const useX = Math.abs(rx) >= Math.abs(ry);
+                const a0 = useX ? aU.x : aU.y;
+                const a1 = useX ? aV.x : aV.y;
+                const b0 = useX ? bU.x : bU.y;
+                const b1 = useX ? bV.x : bV.y;
+                const aMin = Math.min(a0, a1);
+                const aMax = Math.max(a0, a1);
+                const bMin = Math.min(b0, b1);
+                const bMax = Math.max(b0, b1);
+                const overlap = Math.min(aMax, bMax) - Math.max(aMin, bMin);
+                return overlap > 10;
+            };
+            const curveVotes = new Array(edges.length).fill(0);
+            for (let i = 0; i < edges.length; i++) {
+                for (let j = i + 1; j < edges.length; j++) {
+                    if (!edgeOverlapsOnLine(edges[i], edges[j])) continue;
+                    curveVotes[i] += 1;
+                    curveVotes[j] -= 1;
+                }
+            }
+            edges.forEach((edge, edgeIndex) => {
+                const nodeU = nodes.find(n => n.id === edge.u);
+                const nodeV = nodes.find(n => n.id === edge.v);
+                const dx = nodeV.x - nodeU.x;
+                const dy = nodeV.y - nodeU.y;
+                const len = Math.hypot(dx, dy) || 1;
+                const nx = -dy / len;
+                const ny = dx / len;
+                const curveDir = Math.sign(curveVotes[edgeIndex]);
+                const curveAmount = curveDir === 0 ? 0 : Math.max(14, Math.min(28, len * 0.12)) * curveDir;
+                const roadGroup = document.createElementNS(svgNS, 'g');
+                roadGroup.classList.add('road');
+                const asphalt = document.createElementNS(svgNS, curveAmount === 0 ? 'line' : 'path');
+                if (curveAmount === 0) {
+                    asphalt.setAttribute('x1', nodeU.x); asphalt.setAttribute('y1', nodeU.y);
+                    asphalt.setAttribute('x2', nodeV.x); asphalt.setAttribute('y2', nodeV.y);
+                } else {
+                    const cx = ((nodeU.x + nodeV.x) / 2) + (nx * curveAmount);
+                    const cy = ((nodeU.y + nodeV.y) / 2) + (ny * curveAmount);
+                    asphalt.setAttribute('d', `M ${nodeU.x} ${nodeU.y} Q ${cx} ${cy} ${nodeV.x} ${nodeV.y}`);
+                    asphalt.setAttribute('fill', 'none');
+                }
+                asphalt.setAttribute('stroke', '#666'); asphalt.setAttribute('stroke-width', '14'); asphalt.setAttribute('stroke-linecap', 'round');
+                const centerLine = document.createElementNS(svgNS, curveAmount === 0 ? 'line' : 'path');
+                if (curveAmount === 0) {
+                    centerLine.setAttribute('x1', nodeU.x); centerLine.setAttribute('y1', nodeU.y);
+                    centerLine.setAttribute('x2', nodeV.x); centerLine.setAttribute('y2', nodeV.y);
+                } else {
+                    const cx = ((nodeU.x + nodeV.x) / 2) + (nx * curveAmount);
+                    const cy = ((nodeU.y + nodeV.y) / 2) + (ny * curveAmount);
+                    centerLine.setAttribute('d', `M ${nodeU.x} ${nodeU.y} Q ${cx} ${cy} ${nodeV.x} ${nodeV.y}`);
+                    centerLine.setAttribute('fill', 'none');
+                }
+                centerLine.setAttribute('stroke', '#fff'); centerLine.setAttribute('stroke-width', '2'); centerLine.setAttribute('stroke-dasharray', '8,8'); centerLine.setAttribute('stroke-linecap', 'round');
+                roadGroup.appendChild(asphalt); roadGroup.appendChild(centerLine);
+                svg.insertBefore(roadGroup, svg.firstChild);
+            });
+        };
+
+        const handleNodeClick = (clickedId, group) => {
+            if (selectedNode === null) {
+                selectedNode = clickedId;
+                group.classList.remove('correct', 'incorrect');
+                group.classList.add('selected');
+                actionLogs.push({ time: Date.now(), action: 'select_first_node', node: clickedId });
+            } else if (selectedNode === clickedId) {
+                selectedNode = null;
+                group.classList.remove('selected');
+                if (feedbackEnabled) updateConnectedDegrees();
+                actionLogs.push({ time: Date.now(), action: 'deselect_node', node: clickedId });
+            } else {
+                const existingEdgeIndex = edges.findIndex(e => (e.u === selectedNode && e.v === clickedId) || (e.u === clickedId && e.v === selectedNode));
+                if (deleteMode) {
+                    if (existingEdgeIndex !== -1) {
+                        edges.splice(existingEdgeIndex, 1);
+                        hideEdgeRequiredHint();
+                    }
+                    deleteMode = false;
+                    document.getElementById('hint-box-3').style.display = 'none';
+                } else {
+                    if (existingEdgeIndex !== -1) {
+                        edges.splice(existingEdgeIndex, 1);
+                        hideEdgeRequiredHint();
+                    } else {
+                        edges.push({ u: selectedNode, v: clickedId });
+                        hideEdgeRequiredHint();
+                    }
+                }
+                svg.querySelector(`g[data-id="${selectedNode}"]`).classList.remove('selected');
+                selectedNode = null;
+                drawEdges();
+                if (feedbackEnabled) updateConnectedDegrees();
+            }
+        };
+
+        nodes.forEach(node => {
+            const group = document.createElementNS(svgNS, 'g');
+            group.classList.add('node');
+            group.dataset.id = node.id;
+            const highlight = document.createElementNS(svgNS, 'circle');
+            highlight.setAttribute('cx', node.x); highlight.setAttribute('cy', node.y); highlight.setAttribute('r', 32); highlight.classList.add('town-highlight');
+            const icon = document.createElementNS(svgNS, 'text');
+            icon.setAttribute('x', node.x); icon.setAttribute('y', node.y); icon.textContent = '🏰'; icon.classList.add('town-icon');
+            const badgeBg = document.createElementNS(svgNS, 'circle');
+            badgeBg.setAttribute('cx', node.x + 18); badgeBg.setAttribute('cy', node.y - 18); badgeBg.setAttribute('r', 12); badgeBg.setAttribute('fill', '#ffffff'); badgeBg.setAttribute('stroke', '#333'); badgeBg.setAttribute('stroke-width', '2');
+            const badgeText = document.createElementNS(svgNS, 'text');
+            badgeText.setAttribute('x', node.x + 18); badgeText.setAttribute('y', node.y - 18); badgeText.textContent = node.label; badgeText.setAttribute('class', 'badge-text'); badgeText.setAttribute('text-anchor', 'middle'); badgeText.setAttribute('dominant-baseline', 'central');
+            group.appendChild(highlight); group.appendChild(icon); group.appendChild(badgeBg); group.appendChild(badgeText);
+            svg.appendChild(group);
+            group.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                draggedNodeId = node.id;
+                hasMoved = false;
+                startPoint = { x: e.clientX, y: e.clientY };
+                e.preventDefault();
+            }, { passive: false });
+            group.addEventListener('click', () => { if (hasMoved) { hasMoved = false; return; } handleNodeClick(node.id, group); });
+        });
+
+        svg.addEventListener('pointermove', (e) => {
+            if (draggedNodeId === null) return;
+            if (Math.abs(e.clientX - startPoint.x) > 3 || Math.abs(e.clientY - startPoint.y) > 3) hasMoved = true;
+            if (hasMoved) {
+                const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+                const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+                const nodeObj = nodes.find(n => n.id === draggedNodeId);
+                nodeObj.x = svgP.x; nodeObj.y = svgP.y;
+                const group = svg.querySelector(`g[data-id="${draggedNodeId}"]`);
+                group.querySelector('.town-highlight').setAttribute('cx', nodeObj.x); group.querySelector('.town-highlight').setAttribute('cy', nodeObj.y);
+                group.querySelector('.town-icon').setAttribute('x', nodeObj.x); group.querySelector('.town-icon').setAttribute('y', nodeObj.y);
+                group.querySelector('circle:not(.town-highlight)').setAttribute('cx', nodeObj.x + 18); group.querySelector('circle:not(.town-highlight)').setAttribute('cy', nodeObj.y - 18);
+                group.querySelector('.badge-text').setAttribute('x', nodeObj.x + 18); group.querySelector('.badge-text').setAttribute('y', nodeObj.y - 18);
+                drawEdges();
+            }
+        });
+
+        const endConnectDrag3 = () => {
+            if (draggedNodeId !== null && hasMoved) {
+                actionLogs.push({ time: Date.now(), action: 'move_node', node: draggedNodeId, new_x: Math.round(nodes.find(n => n.id === draggedNodeId).x), new_y: Math.round(nodes.find(n => n.id === draggedNodeId).y) });
+            }
+            draggedNodeId = null;
+        };
+
+        svg.addEventListener('pointerup', endConnectDrag3);
+        svg.addEventListener('pointercancel', endConnectDrag3);
+
+        const ghostText = document.getElementById('ghost-text');
+        const ghostButtons = document.getElementById('ghost-buttons');
+        const ghostBubble = document.getElementById('ghost-bubble');
+        const ghostUI = document.getElementById('ghost-ui');
+        const ghostCharacter = document.getElementById('ghost-character');
+
+        ghostCharacter.addEventListener('click', () => {
+            if (degree3SelfAssessmentOpen) return;
+            actionLogs.push({ time: Date.now(), action: 'ghost_clicked_for_hint' });
+            ghostText.textContent = 'Jak ti mohu pomoci?';
+            ghostButtons.innerHTML = `<button id="h1-3" class="ghost-hint-btn">Nevím, jak spojovat hrady.</button><button id="h2-3" class="ghost-hint-btn">Nevím, jestli mám hrady správně spojené.</button><button id="hc-3" class="ghost-hint-btn" style="background: #6c757d;">Zavřít nápovědu</button>`;
+            ghostBubble.classList.add('visible'); ghostUI.style.transform = 'scale(1)';
+            document.getElementById('h1-3').addEventListener('click', () => { hideAllHints(); showHintBanner('hint-box-1'); ghostBubble.classList.remove('visible'); ghostUI.style.transform = 'scale(0.6)'; actionLogs.push({ time: Date.now(), action: 'hint_1_used' }); });
+            document.getElementById('h2-3').addEventListener('click', () => { hideAllHints(); showHintBanner('hint-box-2'); feedbackEnabled = true; updateConnectedDegrees(); ghostBubble.classList.remove('visible'); ghostUI.style.transform = 'scale(0.6)'; actionLogs.push({ time: Date.now(), action: 'hint_2_used_feedback_enabled' }); });
+            document.getElementById('hc-3').addEventListener('click', () => { ghostBubble.classList.remove('visible'); ghostUI.style.transform = 'scale(0.6)'; actionLogs.push({ time: Date.now(), action: 'ghost_hint_closed' }); });
+        });
+
+        document.getElementById('btn-hide-hint-3').addEventListener('click', () => { hideAllHints(); feedbackEnabled = false; updateConnectedDegrees(); actionLogs.push({ time: Date.now(), action: 'hide_hint' }); });
+        document.getElementById('btn-delete-road-3').addEventListener('click', () => {
+            hideAllHints();
+            if (edges.length === 0) {
+                showHintBanner('hint-box-3');
+                document.getElementById('hint-box-3').textContent = 'Nejdřív musíš vytvořit nebo smazat alespoň jednu cestu.';
+                actionLogs.push({ time: Date.now(), action: 'delete_road_mode_rejected_no_edges' });
+                return;
+            }
+            deleteMode = true;
+            showHintBanner('hint-box-3');
+            document.getElementById('hint-box-3').textContent = 'Pro smazání cesty znovu klikni na dva hrady, která ji spojují.';
+            actionLogs.push({ time: Date.now(), action: 'delete_road_mode_activated' });
+        });
+        document.getElementById('btn-restart-3').addEventListener('click', () => {
+            if (edges.length === 0) {
+                showHintBanner('hint-box-3');
+                document.getElementById('hint-box-3').textContent = 'Nejdřív musíš vytvořit nebo smazat alespoň jednu cestu.';
+                actionLogs.push({ time: Date.now(), action: 'restart_rejected_no_edges' });
+                return;
+            }
+            edges = [];
+            nodes.forEach(n => { n.x = n.originalX; n.y = n.originalY; });
+            drawEdges();
+            updateConnectedDegrees();
+            hideAllHints();
+            feedbackEnabled = false;
+            actionLogs.push({ time: Date.now(), action: 'restart_task' });
+        });
+        const showDegreeSequence3OutcomeFeedback = async (allCorrect) => {
+            ghostUI.style.transform = 'scale(1)';
+            ghostButtons.style.flexDirection = 'column';
+            if (allCorrect) {
+                ghostText.innerHTML = 'Tvé řešení bylo správné.';
+            } else {
+                ghostText.innerHTML = 'Bohužel se ti nepodařilo najít správné řešení.<br>Podívej se, které hrady mají špatný počet cest.';
+            }
+            ghostButtons.innerHTML = '<button type="button" id="degree3-feedback-next" class="ghost-hint-btn">Pokračovat na další úlohu</button>';
+            ghostBubble.classList.add('degree-self-assessment-wide', 'visible');
+            await new Promise((resolve) => {
+                document.getElementById('degree3-feedback-next').addEventListener('click', () => {
+                    ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+                    ghostUI.style.transform = 'scale(0.6)';
+                    resolve();
+                }, { once: true });
+            });
+        };
+
+        const finishDegreeSequence3TrialWithAssessment = async (selfAssessmentCode, selfAssessmentLabel) => {
+            const final_correctness = nodes.map(n => { const d = edges.filter(e => e.u === n.id || e.v === n.id).length; const t = parseInt(n.label, 10); return { node_id: n.id, target_degree: t, actual_degree: d, is_correct: d === t }; });
+            const t = Date.now();
+            actionLogs.push({
+                time: t,
+                action: 'self_assessment_chosen',
+                self_assessment: selfAssessmentCode,
+                self_assessment_label: selfAssessmentLabel
+            });
+            actionLogs.push({ time: t, action: 'finish_task_confirmed' });
+            const allCorrect = final_correctness.every(v => v.is_correct);
+            degree3SelfAssessmentOpen = false;
+            ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+            ghostUI.style.transform = 'scale(0.6)';
+
+            if (!allCorrect) {
+                nodes.forEach(n => {
+                    const group = svg.querySelector(`g[data-id="${n.id}"]`);
+                    if (!group) return;
+                    const currentDegree = edges.filter(e => e.u === n.id || e.v === n.id).length;
+                    const targetDegree = parseInt(n.label, 10);
+                    group.classList.remove('correct', 'incorrect', 'selected');
+                    if (currentDegree !== targetDegree) group.classList.add('incorrect');
+                });
+                actionLogs.push({ time: Date.now(), action: 'degree3_post_feedback_correct_solution_shown' });
+            }
+
+            await showDegreeSequence3OutcomeFeedback(allCorrect);
+            detachWindowScrollLoggerDegree3();
+            jsPsych.finishTrial({
+                task_name: 'DegreeSequenceTask3',
+                action_logs: actionLogs
+            });
+        };
+
+        const showDegreeSequence3SelfAssessmentDialog = () => {
+            actionLogs.push({ time: Date.now(), action: 'btn_next_clicked_self_assessment_shown' });
+            degree3SelfAssessmentOpen = true;
+            setDigitoolSelfAssessmentUiLock(true);
+            ghostUI.style.transform = 'scale(1)';
+            ghostText.innerHTML = 'Myslíš si, že máš úlohu správně?';
+            ghostButtons.style.flexDirection = 'column';
+            ghostButtons.innerHTML = `
+              <button type="button" id="degree3-self-continue" class="ghost-hint-btn">Chci ještě pokračovat v řešení.</button>
+              <button type="button" id="degree3-self-sure-correct" class="ghost-hint-btn">Vím jistě, že mám úlohu správně.</button>
+              <button type="button" id="degree3-self-correct" class="ghost-hint-btn">Myslím si, že mám úlohu správně.</button>
+              <button type="button" id="degree3-self-unsure" class="ghost-hint-btn">Nevím jistě, zda mám úlohu správně.</button>
+              <button type="button" id="degree3-self-error" class="ghost-hint-btn">Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení.</button>
+            `;
+            ghostBubble.classList.add('degree-self-assessment-wide', 'visible');
+            document.getElementById('degree3-self-continue').addEventListener('click', () => {
+                actionLogs.push({
+                    time: Date.now(),
+                    action: 'self_assessment_chosen',
+                    self_assessment: 'continue_solving',
+                    self_assessment_label: 'Chci ještě pokračovat v řešení.'
+                });
+                degree3SelfAssessmentOpen = false;
+                setDigitoolSelfAssessmentUiLock(false);
+                ghostBubble.classList.remove('degree-self-assessment-wide', 'visible');
+                ghostUI.style.transform = 'scale(0.6)';
+                ghostText.innerHTML = 'Klikni na ducha pro nápovědu.';
+                ghostButtons.innerHTML = '';
+            });
+            document.getElementById('degree3-self-sure-correct').addEventListener('click', () => {
+                finishDegreeSequence3TrialWithAssessment('sure_correct', 'Vím jistě, že mám úlohu správně.');
+            });
+            document.getElementById('degree3-self-correct').addEventListener('click', () => {
+                finishDegreeSequence3TrialWithAssessment('think_correct', 'Myslím si, že mám úlohu správně.');
+            });
+            document.getElementById('degree3-self-unsure').addEventListener('click', () => {
+                finishDegreeSequence3TrialWithAssessment('unsure', 'Nevím jistě, zda mám úlohu správně.');
+            });
+            document.getElementById('degree3-self-error').addEventListener('click', () => {
+                finishDegreeSequence3TrialWithAssessment('think_error', 'Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení.');
+            });
+        };
+
+        document.getElementById('btn-finish-3').addEventListener('click', () => {
+            if (degree3SelfAssessmentOpen) return;
+            showDegreeSequence3SelfAssessmentDialog();
+        });
+
+        setupDigitoolIdleGhostPrompt({
+          logAction: (action, detail = {}) => actionLogs.push({ time: Date.now(), action, ...detail }),
+          isIdleAllowed: () =>
+            !degree3SelfAssessmentOpen &&
+            !document.body.classList.contains('digitool-self-assessment-lock') &&
+            !ghostBubble.classList.contains('degree-self-assessment-wide'),
+          ghostText,
+          ghostButtons,
+          ghostBubble,
+          ghostUI,
+          defaultGhostHtml: 'Klikni na ducha pro nápovědu.',
+          defaultGhostButtonsHtml: '',
+          onRequestHelp: () => {
+            ghostCharacter.click();
+          }
+        });
+      }
+    };
+
+    // ==========================================
+    // STARTING THE EXPERIMENT
+    // ==========================================
+    jsPsych.run(
+      DigitoolActionLogStore.bindTrialOnFinish(
+        [DegreeSequence1, DegreeSequenceTask2, DegreeSequenceTask3],
+        respondentIdFromUrl,
+        'degree'
+      )
+    );
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,2851 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1f2a44" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <title>DigiTool</title>
+
+  <script src="vendor/jspsych/jspsych.browser.min.js"></script>
+  <script src="vendor/plugin-html-button-response/plugin-html-button-response.browser.min.js"></script>
+  <script src="digitool-action-log-store.js"></script>
+  <script src="digitool-idle-prompt.js"></script>
+  <link href="vendor/jspsych/jspsych.css" rel="stylesheet" />
+
+  <style>
+    body { height: 100%; margin: 0; background-color: #f4f4f9; }
+    .wrap {
+      max-width: min(1380px, calc(100vw - 24px));
+      margin: 24px auto;
+      padding: 20px 18px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .park-task-root { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; color: #1f2a44; }
+    /* ParkTask2: stejná šířka stage jako u úlohy 1 (žádné „roztahování“ mimo bílou kartu) */
+    .park-task-root--task2 {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    /* Stejná typografie nadpisu jako v 19_EulerTask_plus3.html (.prompt + h2 + p) */
+    .park-task-root .prompt {
+      margin-bottom: 20px;
+      font-size: 18px;
+      line-height: 1.5;
+      text-align: center;
+      /* Jako v Euler úloze: žádná šedá (#333) — výchozí barva textu = černá */
+      color: #000;
+    }
+    .park-task-root .prompt h2 {
+      margin: 0 0 0.5em;
+      font-size: 1.5em;
+      font-weight: bold;
+    }
+    .park-task-root .prompt p {
+      margin: 0;
+      font-weight: normal;
+    }
+    .park-stage {
+      border: 1px solid #c5dcc9;
+      border-radius: 10px;
+      background: #e6f2eb;
+      padding: 14px;
+      box-sizing: border-box;
+    }
+    /* +5 % celkové zobrazení obsahu úlohy (mapa, řady, nabídka) */
+    .park-zoom {
+      transform: scale(1.04);
+      transform-origin: top center;
+      padding-bottom: 12px;
+    }
+    /* Mapa | úkoly vedle sebe; nabídka plodin pod tím (viz .token-palette-wrap) */
+    .park-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+      gap: 12px;
+      /* Stejná výška buněk jako mapa → úkoly lze uvnitř sloupce vycentrovat */
+      align-items: stretch;
+    }
+    /* ParkTask2: stejná velikost mapy jako ParkTask1 (1fr + scale 1.04 na .park-zoom) */
+    .park-task-root--task2 .park-map-column {
+      width: 100%;
+      max-width: 100%;
+      justify-self: stretch;
+    }
+    .park-task-root--task2 .park-zoom {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      margin-inline: 0;
+      padding-bottom: 12px;
+      box-sizing: border-box;
+      transform: scale(1.04);
+      transform-origin: top center;
+    }
+    /* Stage jako u úlohy 1: plná šířka karty → mapa v 1fr sloupci stejně velká jako v ParkTask1 */
+    .park-task-root--task2 .park-stage {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      margin-inline: 0;
+      box-sizing: border-box;
+      overflow: visible;
+      /* o trochu víc vodorovně → obsah po scale(1.04) zůstává v zeleném rámu */
+      padding: 28px 36px 34px;
+    }
+    /* Úlohy s cestami: druhý sloupec jen tak široký jako obsah → přiblížení k mapě, nic „nezůstává“ vpravo mimo zelené pozadí */
+    .park-task-root--task2 .park-workspace:not(.park-workspace--task3) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      margin-inline: 0;
+      box-sizing: border-box;
+    }
+    .park-task-root--task2 .park-workspace:not(.park-workspace--task3) .task-column {
+      justify-self: start;
+      align-items: center;
+      max-width: min(420px, 100%);
+      box-sizing: border-box;
+    }
+    /* ParkTask2: čtverečky hned vedle nabídky vrcholů (bez roztahování řádku) */
+    .park-task-root--task2 .token-palette-wrap {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 6px 8px;
+      margin-top: 6px;
+      padding-top: 8px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    .park-task-root--task2 .token-palette {
+      flex: 0 1 auto;
+      justify-content: center;
+      min-width: 0;
+    }
+    .park-task-root--task2 .color-palette-col {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 6px;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      padding: 4px 0 4px 8px;
+      margin: 0;
+      border-left: 1px solid #b8d4be;
+      box-sizing: border-box;
+    }
+    /* ParkTask3: mapa vlevo stejná šířka jako ParkTask1 (1fr), podgrafy vpravo */
+    .park-task-root--task3 .park-workspace--task3 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, auto);
+      gap: 10px;
+      align-items: center;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      margin-inline: 0;
+      box-sizing: border-box;
+    }
+    .park-task-root--task3 .park-task3-graphs-column {
+      min-width: 0;
+      justify-self: stretch;
+    }
+    .park-task-root--task3 .park-task3-graphs-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 0;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .park-task-root--task3 .park-task3-graphs-row--pair {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 14px;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .park-task-root--task3 .park-task3-graphs-row--bottom {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      width: 100%;
+    }
+    .park-task-root--task3 .task3-graph .task-slot {
+      position: absolute;
+    }
+    .park-task-root--task3 .park-zoom {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      margin-inline: 0;
+      padding-bottom: 12px;
+      box-sizing: border-box;
+      transform: scale(1.04);
+      transform-origin: top center;
+    }
+    .park-task-root--task3 .park-stage {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      margin-inline: 0;
+      box-sizing: border-box;
+      overflow: visible;
+      padding: 28px 30px 34px;
+    }
+    .park-task-root--task3 .park-map-column {
+      min-width: 0;
+      max-width: 100%;
+      width: 100%;
+      overflow: visible;
+    }
+    .color-swatch {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      border: 2px solid #222;
+      border-radius: 4px;
+      box-sizing: border-box;
+      cursor: grab;
+      user-select: none;
+    }
+    .palette-color:active { cursor: grabbing; }
+    /* ParkTask2: stejná šířka/výška části cesty u fixních barev i u bílých (drop) */
+    .park-task-root--task2 .task-edge:not(.edge-drop-target) {
+      border: 2px solid rgba(40, 40, 40, 0.5);
+      cursor: default;
+      height: 17px;
+      min-height: 17px;
+      width: 44px;
+      flex: 0 0 44px;
+      border-radius: 3px;
+      box-sizing: border-box;
+    }
+    .park-task-root--task2 .task-edge.edge-drop-target {
+      border: 2px solid #111;
+      border-radius: 4px;
+      cursor: copy;
+      min-height: 17px;
+      height: 17px;
+      width: 44px;
+      flex: 0 0 44px;
+      align-self: center;
+      box-sizing: border-box;
+    }
+    .park-task-root--task2 .task-edge.edge-drop-target.drag-over-edge {
+      outline: 2px solid #007bff;
+      outline-offset: 1px;
+      box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    }
+    .park-map-column {
+      min-width: 0;
+    }
+    .park-map {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: transparent;
+      border-radius: 8px;
+    }
+    .task-column {
+      padding: 4px 0;
+      min-width: 0;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      align-self: stretch;
+    }
+    .task-path {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin: 7px 0;
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+    }
+    .task-edge {
+      height: 12px;
+      width: 36px;
+      flex: 0 0 36px;
+      border: 1px solid #777;
+      background: #fff;
+      box-sizing: border-box;
+      border-radius: 2px;
+      cursor: pointer;
+      align-self: center;
+    }
+    .task-slot {
+      width: 52px;
+      height: 52px;
+      flex: 0 0 52px;
+      border: 2px solid #222;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      background: #d9d9d9;
+    }
+    .task-slot.drop-target {
+      background: #d9d9d9;
+      border-style: dashed;
+    }
+    .task-slot.drop-target.drag-over { border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.2); }
+    .token-chip {
+      width: 44px;
+      height: 44px;
+      border: 2px solid #222;
+      border-radius: 50%;
+      background: #d9d9d9;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      user-select: none;
+    }
+    .token-icon { font-size: 26px; line-height: 1; display: inline-block; }
+    .token-icon--flip-y { transform: scaleX(-1); }
+    .token-icon--rot30 { transform: rotate(30deg); display: inline-block; }
+    .token-letter {
+      position: absolute;
+      right: 3px;
+      bottom: 10px;
+      font-size: 22px;
+      font-weight: 900;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111;
+      line-height: 1;
+    }
+    .token-palette-wrap {
+      width: 100%;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #b8d4be;
+      box-sizing: border-box;
+    }
+    .token-palette {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+    }
+    .palette-token { cursor: grab; }
+    .palette-token:active { cursor: grabbing; }
+    .park-controls {
+      margin-top: 18px;
+      display: flex;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: wrap;
+      text-align: center;
+    }
+    /* Stejné jako tlačítka úlohy v 19_EulerTask_plus3.html (custom-task-btn) */
+    .custom-task-btn {
+      padding: 10px 15px;
+      border: 2px solid #333;
+      border-radius: 8px;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      margin: 5px;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      box-sizing: border-box;
+    }
+    .custom-task-btn:hover {
+      background: #222;
+      border-color: #222;
+    }
+    .park-nudge-banner {
+      display: none;
+      margin: 14px auto 0;
+      max-width: 100%;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 2px solid #e65100;
+      background: #fff3e0;
+      color: #bf360c;
+      font-weight: bold;
+      text-align: center;
+      font-size: 15px;
+      line-height: 1.35;
+      box-sizing: border-box;
+    }
+    .park-nudge-banner.is-visible { display: block; }
+    /* Žluté rámečky nápověd — stejný vizuál jako 14_DegreeSequenceTask (.task-hint-banner + hint-box styly) */
+    .park-task-root .park-orange-hint.task-hint-banner {
+      box-sizing: border-box;
+      max-width: 100%;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      word-break: break-word;
+      hyphens: auto;
+      margin-bottom: 15px;
+      padding: 12px;
+      border-radius: 8px;
+      border: 2px solid #ffeaa7;
+      background: #fff3cd;
+      color: #856404;
+      font-weight: bold;
+      text-align: center;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      font-size: 15px;
+      line-height: 1.35;
+      white-space: pre-line;
+    }
+    .park-orange-hint {
+      display: none;
+    }
+    .park-orange-hint.is-visible {
+      display: block;
+    }
+    .park-map-toolbar {
+      margin-bottom: 8px;
+    }
+    .park-map-toolbar .custom-task-btn.park-clear-map-selection {
+      background: #888;
+      border-color: #555;
+      color: #fff;
+    }
+    .park-map-toolbar .custom-task-btn.park-clear-map-selection:hover {
+      background: #666;
+      border-color: #444;
+    }
+    /* Mapa: výběr písmenem (tyrkysová tečka) — !important kvůli fill v SVG atributu */
+    .park-map-node.is-letter-focus .park-map-node-disc {
+      fill: #5fd4d4 !important;
+    }
+    /* Mapa: tučný výběr kliknutím */
+    .park-map-node.is-outline-selected .park-map-node-disc {
+      stroke: #111;
+      stroke-width: 5px;
+    }
+    .park-map-edge.is-outline-selected .park-map-edge-underlay {
+      opacity: 1;
+    }
+    /* Duch (stejný vizuál jako 14_DegreeSequenceTask.html) */
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15px); }
+    }
+    .ghost-bubble {
+      margin-left: -10px;
+      margin-bottom: 40px;
+      position: relative;
+      background: #fff;
+      border: 3px solid #007bff;
+      border-radius: 20px;
+      padding: 20px;
+      min-width: 280px;
+      max-width: 320px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      opacity: 0;
+      pointer-events: none;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .ghost-bubble.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #ghost-ui {
+      width: max-content;
+      max-width: 100%;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    #ghost-ui #ghost-character {
+      pointer-events: auto;
+    }
+    .ghost-text {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1f2a44;
+      margin-bottom: 15px;
+      text-align: center;
+      line-height: 1.3;
+    }
+    .ghost-buttons > button,
+    .ghost-hint-btn {
+      margin-top: 4px;
+      padding: 10px 15px;
+      font-size: 14px;
+      border-radius: 8px;
+      border: none;
+      background: #007bff;
+      color: #ffffff;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      text-align: center;
+    }
+    .ghost-buttons > button:hover,
+    .ghost-hint-btn:hover {
+      background: #0056d2;
+    }
+    .task-hint-banner {
+      box-sizing: border-box;
+      max-width: 100%;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      word-break: break-word;
+      hyphens: auto;
+    }
+    .degree-self-assessment-wide {
+      max-width: min(400px, 94vw);
+    }
+    /* ParkTask: zobrazení správného řešení po sebehodnocení — výrazný kontrast pro kontrolu */
+    @keyframes park-feedback-slot-pulse-green {
+      from {
+        box-shadow:
+          0 0 0 3px #fff,
+          0 0 0 6px rgba(21, 128, 61, 0.95),
+          0 6px 22px rgba(21, 128, 61, 0.45);
+      }
+      to {
+        box-shadow:
+          0 0 0 3px #fff,
+          0 0 0 9px rgba(21, 128, 61, 0.65),
+          0 8px 28px rgba(21, 128, 61, 0.55);
+      }
+    }
+    @keyframes park-feedback-slot-pulse-red {
+      from {
+        box-shadow:
+          0 0 0 3px #fff,
+          0 0 0 6px rgba(176, 42, 55, 0.95),
+          0 6px 22px rgba(176, 42, 55, 0.45);
+      }
+      to {
+        box-shadow:
+          0 0 0 3px #fff,
+          0 0 0 9px rgba(176, 42, 55, 0.65),
+          0 8px 28px rgba(176, 42, 55, 0.55);
+      }
+    }
+    @keyframes park-feedback-edge-pulse-green {
+      from {
+        box-shadow:
+          0 0 0 2px #fff,
+          0 0 0 5px rgba(21, 128, 61, 0.95),
+          0 4px 16px rgba(21, 128, 61, 0.5);
+      }
+      to {
+        box-shadow:
+          0 0 0 2px #fff,
+          0 0 0 8px rgba(21, 128, 61, 0.55),
+          0 6px 22px rgba(21, 128, 61, 0.45);
+      }
+    }
+    @keyframes park-feedback-edge-pulse-red {
+      from {
+        box-shadow:
+          0 0 0 2px #fff,
+          0 0 0 5px rgba(176, 42, 55, 0.95),
+          0 4px 16px rgba(176, 42, 55, 0.5);
+      }
+      to {
+        box-shadow:
+          0 0 0 2px #fff,
+          0 0 0 8px rgba(176, 42, 55, 0.55),
+          0 6px 22px rgba(176, 42, 55, 0.45);
+      }
+    }
+    .task-slot.park-slot-feedback-correct {
+      border-color: #15803d !important;
+      border-style: solid !important;
+      border-width: 4px !important;
+      background: #bbf7d0 !important;
+      box-shadow:
+        0 0 0 3px #fff,
+        0 0 0 6px rgba(21, 128, 61, 0.95),
+        0 6px 22px rgba(21, 128, 61, 0.45);
+      animation: park-feedback-slot-pulse-green 1.25s ease-in-out infinite alternate;
+    }
+    .task-slot.park-slot-feedback-incorrect {
+      border-color: #b91c1c !important;
+      border-style: solid !important;
+      border-width: 4px !important;
+      background: #fecaca !important;
+      box-shadow:
+        0 0 0 3px #fff,
+        0 0 0 6px rgba(176, 42, 55, 0.95),
+        0 6px 22px rgba(176, 42, 55, 0.45);
+      animation: park-feedback-slot-pulse-red 1.25s ease-in-out infinite alternate;
+    }
+    /* Token vyplňuje většinu kruhu — bez změny pozadí zůstane šedá dominantní */
+    .task-slot.park-slot-feedback-correct .token-chip {
+      border-width: 3px !important;
+      border-color: #15803d !important;
+      background: #86efac !important;
+    }
+    .task-slot.park-slot-feedback-incorrect .token-chip {
+      border-width: 3px !important;
+      border-color: #b91c1c !important;
+      background: #fca5a5 !important;
+    }
+    .task-edge.park-edge-feedback-correct {
+      outline: none;
+      box-shadow:
+        0 0 0 2px #fff,
+        0 0 0 5px rgba(21, 128, 61, 0.95),
+        0 4px 14px rgba(21, 128, 61, 0.45);
+      z-index: 4;
+      animation: park-feedback-edge-pulse-green 1.25s ease-in-out infinite alternate;
+    }
+    .task-edge.park-edge-feedback-incorrect {
+      outline: none;
+      box-shadow:
+        0 0 0 2px #fff,
+        0 0 0 5px rgba(176, 42, 55, 0.95),
+        0 4px 14px rgba(176, 42, 55, 0.45);
+      z-index: 4;
+      animation: park-feedback-edge-pulse-red 1.25s ease-in-out infinite alternate;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .task-slot.park-slot-feedback-correct,
+      .task-slot.park-slot-feedback-incorrect,
+      .task-edge.park-edge-feedback-correct,
+      .task-edge.park-edge-feedback-incorrect {
+        animation: none !important;
+      }
+    }
+    /* ParkTask3 podgrafy: globální feedback dává hranám z-index:4 — ty musí zůstat pod uzly */
+    .park-task-root--task3 .task3-graph .task-edge.park-edge-feedback-correct,
+    .park-task-root--task3 .task3-graph .task-edge.park-edge-feedback-incorrect {
+      z-index: 1;
+    }
+    .park-task-root--task3 .task3-graph .task-slot {
+      z-index: 2;
+    }
+    /* Dokud běží úvod ducha: úkol pod blokovačem nepřijímá kliky (proklik na #ghost-blocker) */
+    #park-container.park-ghost-blocking .prompt,
+    #park-container.park-ghost-blocking .park-stage,
+    #park-container.park-ghost-blocking .park-nudge-banner,
+    #park-container.park-ghost-blocking .park-controls {
+      pointer-events: none;
+      user-select: none;
+    }
+    @media (max-width: 900px) {
+      .park-zoom { transform: scale(1); margin-bottom: 0; }
+      .park-workspace {
+        grid-template-columns: 1fr;
+      }
+      .park-task-root--task2 .park-map-column {
+        max-width: 100%;
+      }
+      .park-task-root--task2 .park-stage {
+        width: 100%;
+        margin-inline: 0;
+      }
+      .park-task-root--task2 .park-zoom {
+        width: 100%;
+        margin-inline: 0;
+        transform: scale(1);
+        padding-bottom: 0;
+      }
+      .park-task-root--task2 .park-workspace:not(.park-workspace--task3) {
+        width: 100%;
+        max-width: 100%;
+        grid-template-columns: 1fr;
+        margin-inline: 0;
+        gap: 12px;
+      }
+      .park-task-root--task2 .token-palette-wrap {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .park-task-root--task2 .color-palette-col {
+        border-left: none;
+        border-top: 1px solid #b8d4be;
+        padding: 12px 0 0;
+        justify-content: center;
+        width: 100%;
+      }
+      .task-path { justify-content: center; flex-wrap: wrap; }
+      .park-task-root--task3 .park-workspace--task3 {
+        grid-template-columns: 1fr;
+        width: 100%;
+        max-width: 100%;
+        margin-inline: auto;
+      }
+      .park-task-root--task3 .park-task3-graphs-row--pair {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+    /* Dialog „Myslíš si…“: skrýt šedá tlačítka, zablokovat úlohu; duch (ghost-hint-btn) zůstane */
+    body.digitool-self-assessment-lock #jspsych-target button.custom-task-btn {
+      display: none !important;
+    }
+    body.digitool-self-assessment-lock #jspsych-target .park-task-root #park-container.digitool-task-surface,
+    body.digitool-self-assessment-lock #jspsych-target .park-task-root > .prompt,
+    body.digitool-self-assessment-lock #jspsych-target .park-task-root .park-zoom.digitool-task-surface {
+      pointer-events: none !important;
+      user-select: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="jspsych-target" class="wrap"></div>
+
+  <script>
+    const DIGITOOL_RESULTS_KEY = "digitool_results";
+    const DIGITOOL_HUB_FILE = "index.html";
+    /** NOTE: false = ParkTask3 se studentům nezobrazí (kód zůstává pro vývoj). */
+    const DIGITOOL_INCLUDE_PARK_TASK_3 = false;
+    const setDigitoolSelfAssessmentUiLock = (locked) => {
+      document.body.classList.toggle("digitool-self-assessment-lock", !!locked);
+    };
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const respondentIdFromUrl = urlParams.get("rid");
+
+    const buildActionLogDescription = (action, detail) => {
+      if (detail.node != null && detail.new_x != null && detail.new_y != null) {
+        return `${action}: node ${detail.node} -> (${detail.new_x}, ${detail.new_y})`;
+      }
+      if (detail.from != null && detail.to != null) {
+        return `${action}: ${detail.from}-${detail.to}`;
+      }
+      if (detail.node != null) return `${action}: node ${detail.node}`;
+      if (detail.letter != null) return `${action}: ${detail.letter}`;
+      if (detail.slot_id != null) return `${action}: slot ${detail.slot_id}`;
+      return action;
+    };
+
+    const normalizeActionLogEntryForExport = (entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      const action = entry.action || entry.type || "unknown_action";
+      const time =
+        entry.time ??
+        (entry.ts_iso ? Date.parse(entry.ts_iso) : null) ??
+        Date.now();
+      const detail = { ...entry };
+      delete detail.action;
+      delete detail.type;
+      delete detail.time;
+      delete detail.t_ms;
+      delete detail.ts_iso;
+      delete detail.description;
+      const hasDetail = Object.keys(detail).length > 0;
+      return {
+        time,
+        action,
+        description: hasDetail ? buildActionLogDescription(action, detail) : action,
+        ...detail
+      };
+    };
+
+    const collectTrialActionLogsForExport = (trial) => {
+      if (!trial || typeof trial !== "object") return [];
+      if (Array.isArray(trial.action_logs) && trial.action_logs.length > 0) {
+        return trial.action_logs;
+      }
+      if (Array.isArray(trial.interaction_log) && trial.interaction_log.length > 0) {
+        return trial.interaction_log;
+      }
+      return Array.isArray(trial.action_logs) ? trial.action_logs : [];
+    };
+
+    const sanitizeDigitoolJsPsychTrialsForExport = (trials) =>
+      trials.map((t) => {
+        if (!t || typeof t !== "object") return t;
+        const out = { ...t };
+        if ("stimulus" in out) out.stimulus = "";
+        if (out.action_logs || out.interaction_log) {
+          out.action_logs = collectTrialActionLogsForExport(out).map(
+            normalizeActionLogEntryForExport
+          );
+          delete out.interaction_log;
+        }
+        if ("final_nodes_positions" in out) delete out.final_nodes_positions;
+        if ("final_edges" in out) delete out.final_edges;
+        if ("final_nodes" in out) delete out.final_nodes;
+        return out;
+      });
+
+    const createParkActionLogger = (opts = {}) => {
+      const { reset = false, taskName = null } = opts;
+      const actionLogs = [];
+      DigitoolActionLogStore.wireArray(respondentIdFromUrl, "park", actionLogs, {
+        reset,
+        taskName
+      });
+      const logAction = (action, details = {}) => {
+        actionLogs.push({ action, ...details });
+      };
+      return { actionLogs, logAction };
+    };
+
+    const saveParkToHub = () => {
+      try {
+        const storedLogs = DigitoolActionLogStore.read(respondentIdFromUrl, "park");
+        let allData = sanitizeDigitoolJsPsychTrialsForExport(jsPsych.data.get().values());
+        allData = DigitoolActionLogStore.mergeTrialsWithStoredLogs(allData, storedLogs);
+        const parsed = JSON.parse(localStorage.getItem(DIGITOOL_RESULTS_KEY) || "{}");
+        parsed.park = {
+          respondent_id: respondentIdFromUrl || null,
+          completed_at: new Date().toISOString(),
+          action_logs: storedLogs.map(normalizeActionLogEntryForExport),
+          trials: allData
+        };
+        localStorage.setItem(DIGITOOL_RESULTS_KEY, JSON.stringify(parsed));
+        window.location.href = DIGITOOL_HUB_FILE + "?completed=park";
+        return true;
+      } catch (err) {
+        console.error("Nepodařilo se uložit ParkTask data:", err);
+        return false;
+      }
+    };
+
+    const jsPsych = initJsPsych({
+      display_element: "jspsych-target",
+      on_finish: () => {
+        if (!saveParkToHub()) {
+          alert("Uložení dat selhalo. Zkuste obnovit stránku.");
+        }
+      }
+    });
+
+    const TOKEN_MAP = {
+      P: "🍊",
+      B: "🍌",
+      H: "🍇",
+      J: "🍓",
+      M: "🍉",
+      R: "🍅",
+      O: "🥒",
+      L: "🍆",
+      T: "🍒",
+      C: "🍋",
+      K: "🌽",
+      A: "🥑"
+    };
+    const edgePalette = ["#ffffff", "#0066e6", "#008a00", "#d50000", "#f2cf3f"];
+    const edgeNames = ["white", "blue", "green", "red", "yellow"];
+
+    /** Pořadí plodin v nabídce (jiné než dříve — viz klíče TOKEN_MAP). */
+    const PALETTE_ORDER = ["A", "K", "C", "T", "L", "O", "R", "M", "J", "H", "B", "P"];
+
+    const COLOR_PALETTE_HTML = edgePalette
+      .map(
+        (hex, i) =>
+          `<div class="color-swatch palette-color" draggable="true" data-edge-color-index="${i}" style="background:${hex}" title="${edgeNames[i]}" aria-label="${edgeNames[i]}"></div>`
+      )
+      .join("");
+
+    const showHintBanner = (idOrEl) => {
+      const el = typeof idOrEl === "string" ? document.getElementById(idOrEl) : idOrEl;
+      if (!el) return;
+      el.style.display = "block";
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    };
+
+    /** Oranžové nápovědy: žádný inline display (jinak přebije .is-visible); po zobrazení scroll k prvku */
+    const revealParkOrangeHint = (el, message) => {
+      if (!el) return;
+      el.textContent = message;
+      el.style.removeProperty("display");
+      el.classList.add("is-visible");
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        });
+      });
+    };
+
+    const PARK_ORANGE_MSG_USE_GHOST = "Pokud chceš nápovědu, klikni na ducha.";
+
+    const PARK_ORANGE_MSG_EDGE_COLOR =
+      "Podobně jako při přetahování obrázků.\nVyber si jednu barvu ve čtverečku pod úkolem. Podrž tuto barvu a přetáhni ji na bílou cestu.";
+
+    /** Úvodní duch (DegreeSequence úloha 1 – stejné texty a tlačítka) */
+    const PARK_GHOST_UI_INTRO = `
+          <div id="ghost-ui" style="position: fixed; bottom: 20px; left: 20px; display: flex; align-items: flex-end; z-index: 999; transition: transform 0.5s ease; transform: scale(1); transform-origin: bottom left;">
+            <div id="ghost-character" style="text-align: center; animation: float 3s ease-in-out infinite; cursor: pointer;">
+              <div style="font-size: 100px; line-height: 1;">👻</div>
+              <div style="font-weight: bold; background: rgba(255,255,255,0.8); padding: 2px 8px; border-radius: 10px;"></div>
+            </div>
+
+            <div id="ghost-bubble" class="ghost-bubble">
+              <div id="ghost-text" class="ghost-text">
+                Už jsi někdy řešil(a) podobnou úlohu?
+              </div>
+              <div id="ghost-buttons" style="display: flex; gap: 10px; justify-content: center; flex-direction: row;">
+                <button id="ghost-btn-yes" style="padding: 10px 15px; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Ano</button>
+                <button id="ghost-btn-unknown" style="padding: 10px 15px; border: none; border-radius: 8px; background: #007bff; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Nevím</button>
+                <button id="ghost-btn-no" style="padding: 10px 15px; border: none; border-radius: 8px; background: #dc3545; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Ne</button>
+              </div>
+              <div style="position: absolute; bottom: -15px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #007bff;"></div>
+              <div style="position: absolute; bottom: -10px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #fff;"></div>
+            </div>
+          </div>`;
+
+    /** Minimalizovaný duch (DegreeSequence úloha 2 – stejný výchozí text) */
+    const PARK_GHOST_UI_MINIMIZED = `
+          <div id="ghost-ui" style="position: fixed; bottom: 20px; left: 20px; display: flex; align-items: flex-end; z-index: 999; transition: transform 0.5s ease; transform: scale(0.6); transform-origin: bottom left;">
+              <div id="ghost-character" style="text-align: center; animation: float 3s ease-in-out infinite; cursor: pointer;">
+                <div style="font-size: 100px; line-height: 1;">👻</div>
+                <div style="font-weight: bold; background: rgba(255,255,255,0.8); padding: 2px 8px; border-radius: 10px;"></div>
+              </div>
+            <div id="ghost-bubble" class="ghost-bubble">
+              <div id="ghost-text" class="ghost-text">Klikni na ducha pro nápovědu.</div>
+                <div id="ghost-buttons" style="display: flex; gap: 10px; justify-content: center; flex-direction: column;"></div>
+                <div style="position: absolute; bottom: -15px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #007bff;"></div>
+                <div style="position: absolute; bottom: -10px; left: 30px; width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 15px solid #fff;"></div>
+              </div>
+            </div>`;
+
+    const wireParkGhostIntroTask1 = (logAction, hintBridge = {}) => {
+      let ghostState = 1;
+      const parkContainer = document.getElementById("park-container");
+      if (parkContainer) parkContainer.classList.add("park-ghost-blocking");
+
+      const ghostText = document.getElementById("ghost-text");
+      const ghostButtons = document.getElementById("ghost-buttons");
+      const ghostBubble = document.getElementById("ghost-bubble");
+      const ghostUI = document.getElementById("ghost-ui");
+      const ghostCharacter = document.getElementById("ghost-character");
+
+      const endGhostBlocking = () => {
+        if (parkContainer) parkContainer.classList.remove("park-ghost-blocking");
+      };
+
+      const hidePark1Hints = () => {
+        const must = document.getElementById("park1-hint-must-answer");
+        if (must) must.style.display = "none";
+        const orange = document.getElementById("park1-orange-hint");
+        if (orange) {
+          orange.classList.remove("is-visible");
+          orange.textContent = "";
+          orange.style.removeProperty("display");
+        }
+      };
+
+      ghostBubble.classList.add("visible");
+
+      document.getElementById("ghost-blocker").addEventListener("click", () => {
+        showHintBanner("park1-hint-must-answer");
+        logAction("ghost_click_blocked_task", {});
+      });
+
+      const blockUntilGhostIntroAnswered = (source) => {
+        if (ghostState === 1 || ghostState === 2) {
+          showHintBanner("park1-hint-must-answer");
+          logAction("ghost_click_blocked_before_intro_answer", { source });
+          return true;
+        }
+        return false;
+      };
+
+      const handleGhostAnswer = (answer) => {
+        if (ghostState === 1) {
+          logAction("ghost_q1_answered", { answer });
+          ghostText.innerHTML = "Pokud budeš potřebovat nápovědu,<br>klikni na mě.";
+          ghostButtons.innerHTML = `
+                  <button id="ghost-btn-minimize" style="padding: 10px 15px; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Chci začít pracovat.</button>
+                  <button id="ghost-btn-help-now" style="padding: 10px 15px; border: none; border-radius: 8px; background: #007bff; color: white; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s;">Chci nápovědu.</button>
+                `;
+
+          document.getElementById("ghost-btn-minimize").addEventListener("click", () => {
+            ghostUI.style.transform = "scale(0.6)";
+            ghostBubble.classList.remove("visible");
+            const b = document.getElementById("ghost-blocker");
+            if (b) b.remove();
+            hidePark1Hints();
+            ghostState = 3;
+            endGhostBlocking();
+            logAction("ghost_minimized", {});
+          });
+
+          document.getElementById("ghost-btn-help-now").addEventListener("click", () => {
+            const b = document.getElementById("ghost-blocker");
+            if (b) b.remove();
+            hidePark1Hints();
+            ghostState = 3;
+            endGhostBlocking();
+            logAction("ghost_help_requested_from_intro", {});
+            ghostCharacter.click();
+          });
+        }
+      };
+
+      document.getElementById("ghost-btn-yes").addEventListener("click", () => handleGhostAnswer("Ano"));
+      document.getElementById("ghost-btn-unknown").addEventListener("click", () => handleGhostAnswer("Nevím"));
+      document.getElementById("ghost-btn-no").addEventListener("click", () => handleGhostAnswer("Ne"));
+
+      ghostCharacter.addEventListener("click", () => {
+        if (ghostState === 1 || ghostState === 2) {
+          logAction("ghost_clicked_during_intro", {});
+          ghostBubble.classList.add("visible");
+          ghostUI.style.transform = "scale(1)";
+          if (ghostState === 1) ghostButtons.style.flexDirection = "row";
+          return;
+        }
+        if (ghostState === 3) {
+          logAction("ghost_clicked_for_hint", {});
+          ghostText.innerHTML = "Jak ti mohu pomoci?";
+          ghostButtons.style.flexDirection = "column";
+          const lab1 = hintBridge.hint1Label || "Nevím, jak doplnit obrázky do cest.";
+          const lab2 = hintBridge.hint2Label || "Nemůžu najít plodinu na mapě.";
+          ghostButtons.innerHTML = `
+                    <button id="hint-1" class="ghost-hint-btn">${lab1}</button>
+                    <button id="hint-2" class="ghost-hint-btn">${lab2}</button>
+                    <button id="ghost-hint-close" class="ghost-hint-btn" style="background: #6c757d;">Zavřít nápovědu</button>
+                `;
+          ghostBubble.classList.add("visible");
+          ghostUI.style.transform = "scale(1)";
+
+          document.getElementById("hint-1").addEventListener("click", () => {
+            if (hintBridge.onHint1) hintBridge.onHint1();
+            ghostBubble.classList.remove("visible");
+            ghostUI.style.transform = "scale(0.6)";
+            logAction("ghost_hint_1_used", { hint_key: "drag_help" });
+          });
+
+          document.getElementById("hint-2").addEventListener("click", () => {
+            if (hintBridge.onHint2) hintBridge.onHint2();
+            ghostBubble.classList.remove("visible");
+            ghostUI.style.transform = "scale(0.6)";
+            logAction("ghost_hint_2_used", { hint_key: "map_find" });
+          });
+
+          document.getElementById("ghost-hint-close").addEventListener("click", () => {
+            ghostBubble.classList.remove("visible");
+            ghostUI.style.transform = "scale(0.6)";
+            logAction("ghost_hint_menu_closed", { legacy_type: "ghost_hint_closed" });
+          });
+        }
+      });
+
+      return blockUntilGhostIntroAnswered;
+    };
+
+    /** Minimalizovaný duch (ParkTask2/3) — stejné nápovědy jako úloha 1 */
+    const wireParkGhostMinimized = (logAction, hintBridge) => {
+      const ghostText = document.getElementById("ghost-text");
+      const ghostButtons = document.getElementById("ghost-buttons");
+      const ghostBubble = document.getElementById("ghost-bubble");
+      const ghostUI = document.getElementById("ghost-ui");
+      const ghostCharacter = document.getElementById("ghost-character");
+      if (!ghostCharacter || ghostCharacter.dataset.parkGhostWired === "1") return;
+      ghostCharacter.dataset.parkGhostWired = "1";
+
+      ghostCharacter.addEventListener("click", () => {
+        logAction("ghost_clicked_for_hint", {});
+        ghostText.textContent = "Jak ti mohu pomoci?";
+        const lab1 = hintBridge.hint1Label || "Nevím, jak doplnit obrázky do cest.";
+        const lab2 = hintBridge.hint2Label || "Nemůžu najít plodinu na mapě.";
+        const lab3 = hintBridge.hint3Label;
+        const hasHint3 = typeof lab3 === "string" && lab3.length > 0;
+        ghostButtons.innerHTML = hasHint3
+          ? `
+                <button id="hint-1" class="ghost-hint-btn">${lab1}</button>
+                <button id="hint-3" class="ghost-hint-btn">${lab3}</button>
+                <button id="hint-2" class="ghost-hint-btn">${lab2}</button>
+                <button id="ghost-hint-close" class="ghost-hint-btn" style="background: #6c757d;">Zavřít nápovědu</button>
+            `
+          : `
+                <button id="hint-1" class="ghost-hint-btn">${lab1}</button>
+                <button id="hint-2" class="ghost-hint-btn">${lab2}</button>
+                <button id="ghost-hint-close" class="ghost-hint-btn" style="background: #6c757d;">Zavřít nápovědu</button>
+            `;
+        ghostButtons.style.flexDirection = "column";
+        ghostBubble.classList.add("visible");
+        ghostUI.style.transform = "scale(1)";
+
+        document.getElementById("hint-1").addEventListener("click", () => {
+          if (hintBridge.onHint1) hintBridge.onHint1();
+          ghostBubble.classList.remove("visible");
+          ghostUI.style.transform = "scale(0.6)";
+          logAction("ghost_hint_1_used", { hint_key: "drag_help" });
+        });
+        if (hasHint3) {
+          document.getElementById("hint-3").addEventListener("click", () => {
+            if (hintBridge.onHint3) hintBridge.onHint3();
+            ghostBubble.classList.remove("visible");
+            ghostUI.style.transform = "scale(0.6)";
+            logAction("ghost_hint_3_used", { hint_key: "edge_color" });
+          });
+        }
+        document.getElementById("hint-2").addEventListener("click", () => {
+          if (hintBridge.onHint2) hintBridge.onHint2();
+          ghostBubble.classList.remove("visible");
+          ghostUI.style.transform = "scale(0.6)";
+          logAction("ghost_hint_2_used", { hint_key: "map_find" });
+        });
+        document.getElementById("ghost-hint-close").addEventListener("click", () => {
+          ghostBubble.classList.remove("visible");
+          ghostUI.style.transform = "scale(0.6)";
+          logAction("ghost_hint_menu_closed", { legacy_type: "ghost_hint_closed" });
+        });
+      });
+    };
+
+    /**
+     * Po sebehodnocení označí jen respondenty měnitelné sloty a hrany (zeleně/červeně + oprava).
+     * Vrcholy a hrany dané v zadání (fixed-slot, pevné barvy hran) se nezvýrazňují.
+     */
+    const applyParkTaskFeedback = (parkRoot, expected, renderTokenInSlot) => {
+      if (!parkRoot || !expected) return;
+      const expNodes = expected.nodes || {};
+      const expEdges = expected.edges || {};
+      Object.keys(expNodes).forEach((slotId) => {
+        const slotEl = parkRoot.querySelector(`[data-slot-id="${slotId}"]`);
+        if (!slotEl || slotEl.classList.contains("fixed-slot")) return;
+        const want = expNodes[slotId];
+        const got = slotEl.dataset.letter || "";
+        slotEl.classList.remove("park-slot-feedback-correct", "park-slot-feedback-incorrect");
+        if (got === want) {
+          slotEl.classList.add("park-slot-feedback-correct");
+        } else {
+          slotEl.classList.add("park-slot-feedback-incorrect");
+          if (renderTokenInSlot && want) renderTokenInSlot(slotEl, want);
+        }
+      });
+      Object.keys(expEdges).forEach((edgeId) => {
+        const el = parkRoot.querySelector(`[data-edge-id="${edgeId}"]`);
+        if (!el || !el.classList.contains("edge-drop-target")) return;
+        const wantName = expEdges[edgeId];
+        const wantIdx = edgeNames.indexOf(wantName);
+        const curIdx = Number(el.dataset.edgeIndex || "0");
+        const curName = edgeNames[curIdx];
+        el.classList.remove("park-edge-feedback-correct", "park-edge-feedback-incorrect");
+        if (curName === wantName) {
+          el.classList.add("park-edge-feedback-correct");
+        } else {
+          el.classList.add("park-edge-feedback-incorrect");
+          if (wantIdx >= 0) {
+            el.dataset.edgeIndex = String(wantIdx);
+            el.style.background = edgePalette[wantIdx];
+          }
+        }
+      });
+    };
+
+    /**
+     * Další úloha → dialog sebehodnocení (14_DegreeSequenceTask), pak vizuální řešení a dokončení pokusu.
+     */
+    const wireParkFinishWithSelfAssessment = (opts) => {
+      const {
+        finishButton,
+        idPrefix,
+        logAction,
+        blockUntilGhostIntroAnswered,
+        getSnapshot,
+        expected,
+        renderTokenInSlot,
+        buildTrialData,
+        feedbackContinueLabel = "Pokračovat na další úlohu"
+      } = opts;
+
+      const ghostText = document.getElementById("ghost-text");
+      const ghostButtons = document.getElementById("ghost-buttons");
+      const ghostBubble = document.getElementById("ghost-bubble");
+      const ghostUI = document.getElementById("ghost-ui");
+
+      let parkSelfAssessmentOpen = false;
+      let finishing = false;
+
+      const gradeSnapshot = (snapshot) => {
+        const nodeCorrect = Object.keys(expected.nodes || {}).every((id) => snapshot.nodes[id] === expected.nodes[id]);
+        const edgeCorrect = Object.keys(expected.edges || {}).every((id) => snapshot.edges[id] === expected.edges[id]);
+        const allCorrect = nodeCorrect && edgeCorrect;
+        return { nodeCorrect, edgeCorrect, allCorrect };
+      };
+
+      const showParkOutcomeFeedback = async (allCorrect) => {
+        logAction("park_outcome_feedback_shown", { all_correct: allCorrect });
+        ghostUI.style.transform = "scale(1)";
+        ghostButtons.style.flexDirection = "column";
+        if (allCorrect) {
+          ghostText.innerHTML = "Tvé řešení bylo správné.";
+        } else {
+          ghostText.innerHTML =
+            "Bohužel se ti nepodařilo najít správné řešení.<br>Podívej se na správné řešení.";
+        }
+        ghostButtons.innerHTML = `<button type="button" id="${idPrefix}feedback-next" class="ghost-hint-btn">${feedbackContinueLabel}</button>`;
+        ghostBubble.classList.add("degree-self-assessment-wide", "visible");
+        await new Promise((resolve) => {
+          document.getElementById(`${idPrefix}feedback-next`).addEventListener(
+            "click",
+            () => {
+              logAction("park_outcome_continue_clicked", { all_correct: allCorrect });
+              ghostBubble.classList.remove("degree-self-assessment-wide", "visible");
+              ghostUI.style.transform = "scale(0.6)";
+              resolve();
+            },
+            { once: true }
+          );
+        });
+      };
+
+      const finishParkTrialWithAssessment = async (selfAssessmentCode, selfAssessmentLabel) => {
+        if (finishing) return;
+        finishing = true;
+        try {
+          logAction("self_assessment_chosen", {
+            self_assessment: selfAssessmentCode,
+            self_assessment_label: selfAssessmentLabel
+          });
+          logAction("finish_task_confirmed", {});
+          parkSelfAssessmentOpen = false;
+          ghostBubble.classList.remove("degree-self-assessment-wide", "visible");
+          ghostUI.style.transform = "scale(0.6)";
+          if (blockUntilGhostIntroAnswered && blockUntilGhostIntroAnswered("park-finish")) return;
+
+          const snapshot = getSnapshot();
+          const { nodeCorrect, edgeCorrect, allCorrect } = gradeSnapshot(snapshot);
+          const parkRoot = document.querySelector(".park-task-root");
+          applyParkTaskFeedback(parkRoot, expected, renderTokenInSlot);
+          logAction("park_post_feedback_solution_marked", { all_correct: allCorrect, node_correct: nodeCorrect, edge_correct: edgeCorrect });
+
+          await showParkOutcomeFeedback(allCorrect);
+
+          const trialPayload = buildTrialData({
+            snapshot,
+            nodeCorrect,
+            edgeCorrect,
+            allCorrect,
+            selfAssessmentCode,
+            selfAssessmentLabel
+          });
+          jsPsych.finishTrial(trialPayload);
+        } finally {
+          finishing = false;
+        }
+      };
+
+      const showParkSelfAssessmentDialog = () => {
+        if (blockUntilGhostIntroAnswered && blockUntilGhostIntroAnswered("park-finish")) return;
+        logAction("self_assessment_dialog_opened", {});
+        parkSelfAssessmentOpen = true;
+        setDigitoolSelfAssessmentUiLock(true);
+        ghostUI.style.transform = "scale(1)";
+        ghostText.innerHTML = "Myslíš si, že máš úlohu správně?";
+        ghostButtons.style.flexDirection = "column";
+        ghostButtons.innerHTML = `
+              <button type="button" id="${idPrefix}self-continue" class="ghost-hint-btn">Chci ještě pokračovat v řešení.</button>
+              <button type="button" id="${idPrefix}self-sure-correct" class="ghost-hint-btn">Vím jistě, že mám úlohu správně.</button>
+              <button type="button" id="${idPrefix}self-correct" class="ghost-hint-btn">Myslím si, že mám úlohu správně.</button>
+              <button type="button" id="${idPrefix}self-unsure" class="ghost-hint-btn">Nevím jistě, zda mám úlohu správně.</button>
+              <button type="button" id="${idPrefix}self-error" class="ghost-hint-btn">Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení.</button>
+            `;
+        ghostBubble.classList.add("degree-self-assessment-wide", "visible");
+
+        document.getElementById(`${idPrefix}self-continue`).addEventListener("click", () => {
+          logAction("park_self_assessment_continue_clicked", {});
+          logAction("self_assessment_chosen", {
+            self_assessment: "continue_solving",
+            self_assessment_label: "Chci ještě pokračovat v řešení."
+          });
+          parkSelfAssessmentOpen = false;
+          setDigitoolSelfAssessmentUiLock(false);
+          ghostBubble.classList.remove("degree-self-assessment-wide", "visible");
+          ghostUI.style.transform = "scale(0.6)";
+          ghostText.innerHTML = "Pokud budeš potřebovat nápovědu,<br>klikni na mě.";
+          ghostButtons.innerHTML = "";
+        });
+        document.getElementById(`${idPrefix}self-sure-correct`).addEventListener("click", () => {
+          logAction("park_self_assessment_option_clicked", { code: "sure_correct" });
+          finishParkTrialWithAssessment("sure_correct", "Vím jistě, že mám úlohu správně.");
+        });
+        document.getElementById(`${idPrefix}self-correct`).addEventListener("click", () => {
+          logAction("park_self_assessment_option_clicked", { code: "think_correct" });
+          finishParkTrialWithAssessment("think_correct", "Myslím si, že mám úlohu správně.");
+        });
+        document.getElementById(`${idPrefix}self-unsure`).addEventListener("click", () => {
+          logAction("park_self_assessment_option_clicked", { code: "unsure" });
+          finishParkTrialWithAssessment("unsure", "Nevím jistě, zda mám úlohu správně.");
+        });
+        document.getElementById(`${idPrefix}self-error`).addEventListener("click", () => {
+          logAction("park_self_assessment_option_clicked", { code: "think_error" });
+          finishParkTrialWithAssessment(
+            "think_error",
+            "Myslím si, že mám v úloze chybu, ale už nechci pokračovat v řešení."
+          );
+        });
+      };
+
+      finishButton.addEventListener("click", () => {
+        if (parkSelfAssessmentOpen) return;
+        logAction("park_finish_button_clicked", {});
+        showParkSelfAssessmentDialog();
+      });
+    };
+
+    const PARK_MAP_EDGES_DATA = [
+      [335, 95, 600, 95, "#f2cf3f"],
+      [600, 95, 750, 250, "#d50000"],
+      [750, 250, 865, 95, "#d50000"],
+      [865, 95, 960, 270, "#0066e6"],
+      [600, 95, 865, 95, "#d50000"],
+      [240, 270, 335, 95, "#0066e6"],
+      [240, 270, 450, 250, "#008a00"],
+      [240, 270, 335, 470, "#d50000"],
+      [450, 250, 600, 95, "#d50000"],
+      [450, 250, 335, 95, "#0066e6"],
+      [450, 250, 750, 250, "#0066e6"],
+      [450, 250, 335, 470, "#f2cf3f"],
+      [450, 250, 600, 410, "#f2cf3f"],
+      [750, 250, 600, 95, "#008a00"],
+      [750, 250, 865, 95, "#008a00"],
+      [750, 250, 960, 270, "#d50000"],
+      [750, 250, 600, 410, "#0066e6"],
+      [750, 250, 865, 470, "#d50000"],
+      [335, 470, 600, 410, "#d50000"],
+      [335, 470, 500, 585, "#008a00"],
+      [500, 585, 600, 410, "#f2cf3f"],
+      [500, 585, 700, 585, "#008a00"],
+      [600, 410, 700, 585, "#008a00"],
+      [600, 410, 865, 470, "#d50000"],
+      [700, 585, 865, 470, "#f2cf3f"],
+      [865, 470, 960, 270, "#0066e6"]
+    ];
+
+    const parkMapEdgeGroup = ([x1, y1, x2, y2, stroke]) => {
+      const key = `${x1}_${y1}_${x2}_${y2}`;
+      return `<g class="park-map-edge" data-edge-key="${key}">
+      <line class="park-map-edge-underlay" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#111" stroke-width="38" stroke-linecap="round" opacity="0" pointer-events="none"/>
+      <line class="park-map-edge-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="26" stroke-linecap="round" pointer-events="stroke"/>
+    </g>`;
+    };
+
+    const parkMapNodeGroup = (letter, cx, cy) => {
+      const emoji = TOKEN_MAP[letter] || "";
+      const lx = cx + 42;
+      let emojiInner;
+      if (letter === "H") {
+        emojiInner = `<text x="${cx}" y="${cy}" font-size="55" text-anchor="middle" dominant-baseline="middle" transform="translate(${cx} ${cy}) scale(-1 1) translate(${-cx} ${-cy})">${emoji}</text>`;
+      } else if (letter === "T") {
+        emojiInner = `<text x="${cx}" y="${cy}" font-size="55" text-anchor="middle" dominant-baseline="middle" transform="rotate(30 ${cx} ${cy})">${emoji}</text>`;
+      } else {
+        emojiInner = `<text x="${cx}" y="${cy}" font-size="55" text-anchor="middle" dominant-baseline="middle">${emoji}</text>`;
+      }
+      return `<g class="park-map-node" data-park-letter="${letter}" style="cursor:pointer">
+    <circle class="park-map-node-disc" cx="${cx}" cy="${cy}" r="48" fill="#d9d9d9" stroke="#222" stroke-width="2"/>
+    ${emojiInner}
+    <text x="${lx}" y="${cy}" text-anchor="end" dominant-baseline="middle" font-size="44" font-weight="900">${letter}</text>
+  </g>`;
+    };
+
+    const PARK_MAP_NODES_META = [
+      ["P", 335, 95],
+      ["B", 600, 95],
+      ["H", 865, 95],
+      ["J", 240, 270],
+      ["M", 450, 250],
+      ["R", 750, 250],
+      ["O", 960, 270],
+      ["L", 335, 470],
+      ["T", 600, 410],
+      ["C", 865, 470],
+      ["K", 500, 585],
+      ["A", 700, 585]
+    ];
+
+    const buildParkMapSvgInner = () => {
+      const edges = PARK_MAP_EDGES_DATA.map(parkMapEdgeGroup).join("");
+      const nodes = PARK_MAP_NODES_META.map(([l, x, y]) => parkMapNodeGroup(l, x, y)).join("");
+      return `<g stroke-linecap="round">${edges}</g><g font-family="Arial, Helvetica, sans-serif">${nodes}</g>`;
+    };
+
+    const parkMapSvg = (vbW) =>
+      `<svg class="park-map" viewBox="0 0 ${vbW} 650" xmlns="http://www.w3.org/2000/svg" aria-label="Mapa s uzly a barevnými cestami">${buildParkMapSvgInner()}</svg>`;
+
+    const parkMapToolbarHtml = () =>
+      `<div class="park-map-toolbar"><button type="button" class="custom-task-btn park-clear-map-selection">Smazat označení</button></div>`;
+
+    const parkMapWithToolbar = (vbW) => `${parkMapToolbarHtml()}${parkMapSvg(vbW)}`;
+
+    /** Klikací mapa: tyrkysová výplň jen podle kódu (nabídka/cesty); na mapě jen tučný obrys uzlů/hran. */
+    const attachParkMapInteractions = (rootEl, logAction) => {
+      const svg = rootEl.querySelector(".park-map");
+      if (!svg)
+        return {
+          clearOutline: () => {},
+          clearTurquoise: () => {},
+          setTurquoiseLetter: () => {},
+          svg: null
+        };
+
+      const clearOutline = () => {
+        svg.querySelectorAll(".park-map-node.is-outline-selected").forEach((el) => el.classList.remove("is-outline-selected"));
+        svg.querySelectorAll(".park-map-edge.is-outline-selected").forEach((el) => el.classList.remove("is-outline-selected"));
+      };
+
+      const clearTurquoise = () => {
+        svg.querySelectorAll(".park-map-node.is-letter-focus").forEach((el) => el.classList.remove("is-letter-focus"));
+      };
+
+      const setTurquoiseLetter = (letter) => {
+        clearTurquoise();
+        if (!letter || !TOKEN_MAP[letter]) return;
+        const n = svg.querySelector(`.park-map-node[data-park-letter="${letter}"]`);
+        if (n) n.classList.add("is-letter-focus");
+      };
+
+      svg.addEventListener("click", (ev) => {
+        const node = ev.target.closest(".park-map-node");
+        const edge = ev.target.closest(".park-map-edge");
+        if (node) {
+          ev.stopPropagation();
+          const sel = node.classList.toggle("is-outline-selected");
+          logAction("park_map_node_outline_toggle", { letter: node.dataset.parkLetter, selected: sel });
+          return;
+        }
+        if (edge && ev.target.classList.contains("park-map-edge-line")) {
+          ev.stopPropagation();
+          const sel = edge.classList.toggle("is-outline-selected");
+          logAction("park_map_edge_outline_toggle", { edge_key: edge.dataset.edgeKey, selected: sel });
+          return;
+        }
+        if (edge) {
+          ev.stopPropagation();
+          logAction("park_map_edge_click_nonstroke", { edge_key: edge.dataset.edgeKey });
+          return;
+        }
+        logAction("park_map_click_background", {});
+      });
+
+      rootEl.querySelectorAll(".park-clear-map-selection").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          clearOutline();
+          logAction("park_map_clear_outline", {});
+        });
+      });
+
+      return { clearOutline, clearTurquoise, setTurquoiseLetter, svg };
+    };
+
+    const tokenIconInner = (letter) => {
+      const raw = TOKEN_MAP[letter] || "";
+      if (letter === "H") return `<span class="token-icon token-icon--flip-y">${raw}</span>`;
+      if (letter === "T") return `<span class="token-icon token-icon--rot30">${raw}</span>`;
+      return `<span class="token-icon">${raw}</span>`;
+    };
+
+    const tokenChip = (letter, draggable = false) => `
+      <div class="token-chip ${draggable ? "palette-token" : ""}" ${draggable ? `draggable="true" data-letter="${letter}"` : ""}>
+        ${tokenIconInner(letter)}
+        <span class="token-letter">${letter}</span>
+      </div>
+    `;
+
+    /** ParkTask3: geometrie podgrafů (čáry mezi středy uzlů, širší zásah pro drop barev) */
+    const pt3EdgeBar = (cx1, cy1, cx2, cy2, opts = {}) => {
+      const r = opts.nodeR ?? 26;
+      const extra = opts.hitExtra ?? 18;
+      const h = opts.thickness ?? 26;
+      const dx = cx2 - cx1;
+      const dy = cy2 - cy1;
+      const len = Math.hypot(dx, dy);
+      const ux = dx / len;
+      const uy = dy / len;
+      const x1 = cx1 + ux * r;
+      const y1 = cy1 + uy * r;
+      const x2 = cx2 - ux * r;
+      const y2 = cy2 - uy * r;
+      const barLen = Math.hypot(x2 - x1, y2 - y1);
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+      const w = barLen + extra;
+      const cls = opts.droppable ? "task-edge edge-drop-target" : "task-edge";
+      const eid = opts.edgeId ? ` data-edge-id="${opts.edgeId}" data-edge-index="0"` : "";
+      const bg = opts.bg || "#ffffff";
+      return `<div class="${cls}"${eid} style="position:absolute;left:${mx - w / 2}px;top:${my - h / 2}px;width:${w}px;height:${h}px;transform:rotate(${ang}deg);transform-origin:center;box-sizing:border-box;background:${bg};border-radius:4px;z-index:1;"></div>`;
+    };
+
+    const pt3Node = (cx, cy, opts = {}) => {
+      const s = opts.slotSize ?? 52;
+      const left = cx - s / 2;
+      const top = cy - s / 2;
+      const st = `style="position:absolute;left:${left}px;top:${top}px;z-index:2;width:${s}px;height:${s}px;min-width:${s}px;min-height:${s}px;flex:0 0 ${s}px;box-sizing:border-box"`;
+      if (opts.letter) {
+        return `<div class="task-slot fixed-slot" data-fixed-letter="${opts.letter}" ${st}>${tokenChip(opts.letter)}</div>`;
+      }
+      return `<div class="task-slot drop-target" data-slot-id="${opts.slotId}" ${st}></div>`;
+    };
+
+    const buildParkTask3GraphsHtml = () => {
+      const eGeom = { nodeR: 26, hitExtra: 18, thickness: 26 };
+
+      const TL = { x: 68, y: 68 };
+      const TR = { x: 204, y: 68 };
+      const BL = { x: 68, y: 204 };
+      const BR = { x: 204, y: 204 };
+      const sq = 272;
+      let g1 = `<div class="task3-graph" style="position:relative;width:${sq}px;height:${sq}px;margin:0">`;
+      g1 += pt3EdgeBar(TL.x, TL.y, TR.x, TR.y, { ...eGeom, droppable: true, edgeId: "g1_top", bg: "#ffffff" });
+      g1 += pt3EdgeBar(TL.x, TL.y, BL.x, BL.y, { ...eGeom, droppable: true, edgeId: "g1_left", bg: "#ffffff" });
+      g1 += pt3EdgeBar(TR.x, TR.y, BR.x, BR.y, { ...eGeom, droppable: false, bg: "#0066e6" });
+      g1 += pt3EdgeBar(BL.x, BL.y, BR.x, BR.y, { ...eGeom, droppable: false, bg: "#d50000" });
+      g1 += pt3EdgeBar(TL.x, TL.y, BR.x, BR.y, { ...eGeom, droppable: true, edgeId: "g1_diag", bg: "#ffffff" });
+      g1 += pt3Node(TL.x, TL.y, { letter: "R" });
+      g1 += pt3Node(TR.x, TR.y, { slotId: "g1_tr" });
+      g1 += pt3Node(BL.x, BL.y, { slotId: "g1_bl" });
+      g1 += pt3Node(BR.x, BR.y, { letter: "C" });
+      g1 += "</div>";
+
+      let g2 = `<div class="task3-graph" style="position:relative;width:${sq}px;height:${sq}px;margin:0">`;
+      g2 += pt3EdgeBar(TL.x, TL.y, TR.x, TR.y, { ...eGeom, droppable: true, edgeId: "g2_top", bg: "#ffffff" });
+      g2 += pt3EdgeBar(TL.x, TL.y, BL.x, BL.y, { ...eGeom, droppable: false, bg: "#008a00" });
+      g2 += pt3EdgeBar(TR.x, TR.y, BR.x, BR.y, { ...eGeom, droppable: true, edgeId: "g2_right", bg: "#ffffff" });
+      g2 += pt3EdgeBar(BL.x, BL.y, BR.x, BR.y, { ...eGeom, droppable: true, edgeId: "g2_bottom", bg: "#ffffff" });
+      g2 += pt3EdgeBar(TL.x, TL.y, BR.x, BR.y, { ...eGeom, droppable: true, edgeId: "g2_diag", bg: "#ffffff" });
+      g2 += pt3Node(TL.x, TL.y, { letter: "R" });
+      g2 += pt3Node(TR.x, TR.y, { slotId: "g2_tr" });
+      g2 += pt3Node(BL.x, BL.y, { slotId: "g2_bl" });
+      g2 += pt3Node(BR.x, BR.y, { letter: "H" });
+      g2 += "</div>";
+
+      const J = { x: 136, y: 44 };
+      const D = { x: 44, y: 122 };
+      const N = { x: 228, y: 122 };
+      const P = { x: 84, y: 232 };
+      const R = { x: 188, y: 232 };
+      const w3 = 276;
+      const h3 = 288;
+      let g3 = `<div class="task3-graph" style="position:relative;width:${w3}px;height:${h3}px;margin:0">`;
+      g3 += pt3EdgeBar(D.x, D.y, J.x, J.y, { ...eGeom, droppable: true, edgeId: "g3_dj", bg: "#ffffff" });
+      g3 += pt3EdgeBar(J.x, J.y, N.x, N.y, { ...eGeom, droppable: true, edgeId: "g3_jn", bg: "#ffffff" });
+      g3 += pt3EdgeBar(N.x, N.y, R.x, R.y, { ...eGeom, droppable: false, bg: "#f2cf3f" });
+      g3 += pt3EdgeBar(R.x, R.y, P.x, P.y, { ...eGeom, droppable: true, edgeId: "g3_rp", bg: "#ffffff" });
+      g3 += pt3EdgeBar(P.x, P.y, D.x, D.y, { ...eGeom, droppable: false, bg: "#f2cf3f" });
+      g3 += pt3EdgeBar(P.x, P.y, J.x, J.y, { ...eGeom, droppable: true, edgeId: "g3_pj", bg: "#ffffff" });
+      g3 += pt3EdgeBar(P.x, P.y, N.x, N.y, { ...eGeom, droppable: true, edgeId: "g3_pn", bg: "#ffffff" });
+      g3 += pt3Node(J.x, J.y, { letter: "J" });
+      g3 += pt3Node(D.x, D.y, { slotId: "g3_d" });
+      g3 += pt3Node(N.x, N.y, { slotId: "g3_n" });
+      g3 += pt3Node(P.x, P.y, { slotId: "g3_p" });
+      g3 += pt3Node(R.x, R.y, { slotId: "g3_r" });
+      g3 += "</div>";
+
+      return `<div class="park-task3-graphs-wrap">
+        <div class="park-task3-graphs-row park-task3-graphs-row--pair">${g1}${g2}</div>
+        <div class="park-task3-graphs-row park-task3-graphs-row--bottom">${g3}</div>
+      </div>`;
+    };
+
+    /**
+     * ParkTask3: očekávané doplnění podgrafů (vrcholy + bílé hrany). Při změně grafů v šabloně upravit.
+     */
+    const PARK_TASK3_EXPECTED = {
+      nodes: {
+        g1_tr: "O",
+        g1_bl: "T",
+        g2_tr: "O",
+        g2_bl: "B",
+        g3_d: "L",
+        g3_n: "P",
+        g3_p: "M",
+        g3_r: "B"
+      },
+      edges: {
+        g1_top: "red",
+        g1_left: "blue",
+        g1_diag: "red",
+        g2_top: "red",
+        g2_right: "blue",
+        g2_bottom: "red",
+        g2_diag: "green",
+        g3_dj: "red",
+        g3_jn: "blue",
+        g3_rp: "red",
+        g3_pj: "green",
+        g3_pn: "blue"
+      }
+    };
+
+    const ParkTask1 = {
+      type: jsPsychHtmlButtonResponse,
+      choices: [],
+      data: { task_name: "ParkTask1" },
+      stimulus: () => `
+        <div class="park-task-root">
+          ${PARK_GHOST_UI_INTRO}
+          <div id="park-container" class="digitool-task-surface" style="position:relative">
+          <div id="ghost-blocker" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:998;cursor:pointer;"></div>
+          <div class="prompt">
+            <h2>Doplň plodiny do plánků.</h2>
+            <p id="park-subtitle">Přetáhni obrázky z nabídky pod mapou na prázdná kolečka. V jedné cestě může být každá plodina nejvýše jednou. Cestu si můžeš vyznačit v mapě klikáním na obrázky a barevné cesty.</p>
+
+              <div id="park1-hint-must-answer" class="task-hint-banner" style="display: none; background: #fff3cd; color: #856404; border: 2px solid #ffeaa7; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                Nejdřív musíš zodpovědět otázky ducha.
+              </div>
+
+              <div id="park1-orange-hint" class="park-orange-hint task-hint-banner" role="status"></div>
+          </div>
+
+          <div class="park-stage">
+            <div class="park-zoom digitool-task-surface">
+            <div class="park-workspace">
+              <div class="park-map-column">
+              ${parkMapWithToolbar(1200)}
+              </div>
+
+              <div class="task-column">
+                <!-- 1: C – žlutá – . – zelená – . – zelená – . – žlutá – .  → c-a-k-l-m -->
+                <div class="task-path" data-path-id="p1">
+                  <div class="task-slot fixed-slot" data-fixed-letter="C">${tokenChip("C")}</div>
+                  <div class="task-edge" style="background:#f2cf3f"></div>
+                  <div class="task-slot drop-target" data-slot-id="p1_s1" data-path="p1"></div>
+                  <div class="task-edge" style="background:#008a00"></div>
+                  <div class="task-slot drop-target" data-slot-id="p1_s2" data-path="p1"></div>
+                  <div class="task-edge" style="background:#008a00"></div>
+                  <div class="task-slot drop-target" data-slot-id="p1_s3" data-path="p1"></div>
+                  <div class="task-edge" style="background:#f2cf3f"></div>
+                  <div class="task-slot drop-target" data-slot-id="p1_s4" data-path="p1"></div>
+                </div>
+                <!-- 2: . – zelená – M – modrá – . – žlutá – . – zelená – . → j-m-p-b-r -->
+                <div class="task-path" data-path-id="p2">
+                  <div class="task-slot drop-target" data-slot-id="p2_s1" data-path="p2"></div>
+                  <div class="task-edge" style="background:#008a00"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="M">${tokenChip("M")}</div>
+                  <div class="task-edge" style="background:#0066e6"></div>
+                  <div class="task-slot drop-target" data-slot-id="p2_s2" data-path="p2"></div>
+                  <div class="task-edge" style="background:#f2cf3f"></div>
+                  <div class="task-slot drop-target" data-slot-id="p2_s3" data-path="p2"></div>
+                  <div class="task-edge" style="background:#008a00"></div>
+                  <div class="task-slot drop-target" data-slot-id="p2_s4" data-path="p2"></div>
+                </div>
+                <!-- 3: . – žlutá – . – modrá – O – modrá – . – červená – . → a-c-o-h-b -->
+                <div class="task-path" data-path-id="p3">
+                  <div class="task-slot drop-target" data-slot-id="p3_s1" data-path="p3"></div>
+                  <div class="task-edge" style="background:#f2cf3f"></div>
+                  <div class="task-slot drop-target" data-slot-id="p3_s2" data-path="p3"></div>
+                  <div class="task-edge" style="background:#0066e6"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="O">${tokenChip("O")}</div>
+                  <div class="task-edge" style="background:#0066e6"></div>
+                  <div class="task-slot drop-target" data-slot-id="p3_s3" data-path="p3"></div>
+                  <div class="task-edge" style="background:#d50000"></div>
+                  <div class="task-slot drop-target" data-slot-id="p3_s4" data-path="p3"></div>
+                </div>
+                <!-- 4: . – modrá – . – červená – . – žlutá – . – zelená – A → o-c-t-k-a -->
+                <div class="task-path" data-path-id="p4">
+                  <div class="task-slot drop-target" data-slot-id="p4_s1" data-path="p4"></div>
+                  <div class="task-edge" style="background:#0066e6"></div>
+                  <div class="task-slot drop-target" data-slot-id="p4_s2" data-path="p4"></div>
+                  <div class="task-edge" style="background:#d50000"></div>
+                  <div class="task-slot drop-target" data-slot-id="p4_s3" data-path="p4"></div>
+                  <div class="task-edge" style="background:#f2cf3f"></div>
+                  <div class="task-slot drop-target" data-slot-id="p4_s4" data-path="p4"></div>
+                  <div class="task-edge" style="background:#008a00"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="A">${tokenChip("A")}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="token-palette-wrap">
+              <div class="token-palette" id="token-palette">
+                ${PALETTE_ORDER.map((l) => tokenChip(l, true)).join("")}
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <div id="park-nudge-banner" class="park-nudge-banner" role="alert">
+            Přesuň alespoň jednu plodinu do prázdného kolečka.
+          </div>
+
+          <div class="park-controls">
+            <button type="button" class="custom-task-btn" id="park-toggle-hint">Schovat nápovědu</button>
+            <button type="button" class="custom-task-btn" id="park-undo">Krok zpět</button>
+            <button type="button" class="custom-task-btn" id="park-reset">Začít znovu</button>
+            <button type="button" class="custom-task-btn" id="park-finish">Další úloha</button>
+          </div>
+          </div>
+        </div>
+      `,
+      on_load: () => {
+        setDigitoolSelfAssessmentUiLock(false);
+        disposeDigitoolIdleTimer();
+        const expected = {
+          nodes: {
+            p1_s1: "A",
+            p1_s2: "K",
+            p1_s3: "L",
+            p1_s4: "M",
+            p2_s1: "J",
+            p2_s2: "P",
+            p2_s3: "B",
+            p2_s4: "R",
+            p3_s1: "A",
+            p3_s2: "C",
+            p3_s3: "H",
+            p3_s4: "B",
+            p4_s1: "O",
+            p4_s2: "C",
+            p4_s3: "T",
+            p4_s4: "K"
+          },
+          edges: {}
+        };
+        const correctSolutionStrings = {
+          p1: "c-a-k-l-m",
+          p2: "j-m-p-b-r",
+          p3: "a-c-o-h-b",
+          p4: "o-c-t-k-a"
+        };
+        const hintBtn = document.getElementById("park-toggle-hint");
+        const nudgeBannerEl = document.getElementById("park-nudge-banner");
+        const slotEls = Array.from(document.querySelectorAll(".task-slot.drop-target"));
+        const edgeEls = Array.from(document.querySelectorAll(".task-edge.editable"));
+        const paletteEls = Array.from(document.querySelectorAll(".palette-token"));
+        const { actionLogs, logAction } = createParkActionLogger({
+          reset: true,
+          taskName: "ParkTask1"
+        });
+
+        const renderTokenInSlot = (slotEl, letter) => {
+          slotEl.innerHTML = letter ? tokenChip(letter) : "";
+          slotEl.dataset.letter = letter || "";
+        };
+
+        const getSnapshot = () => {
+          const nodes = {};
+          const edges = {};
+          slotEls.forEach((el) => {
+            nodes[el.dataset.slotId] = el.dataset.letter || "";
+          });
+          edgeEls.forEach((el) => {
+            edges[el.dataset.edgeId] = edgeNames[Number(el.dataset.edgeIndex || "0")] || "white";
+          });
+          return { nodes, edges };
+        };
+
+        const history = [];
+        let dragLetter = null;
+
+        const parkRoot = document.querySelector(".park-task-root");
+        let orangeMode = null;
+        let mapSpotlightActive = false;
+        let ghostHintFromGhostUsed = false;
+        const clearOrangeHints = () => {
+          parkRoot.querySelectorAll(".park-orange-hint").forEach((el) => {
+            el.classList.remove("is-visible");
+            el.textContent = "";
+            el.style.removeProperty("display");
+          });
+        };
+        const syncPaletteDraggable = () => {
+          paletteEls.forEach((el) => {
+            el.draggable = orangeMode !== "mapfind";
+          });
+        };
+        const ORANGE_DRAG_MSG =
+          "Vyber si jedno kolečko s obrázkem pod mapou. Podrž tento obrázek a přetáhni jej do prázdného kolečka.";
+        const ORANGE_MAP_MSG =
+          "Když klikneš na obrázek v cestě nebo z nabídky pod mapou, zobrazí se ti jeho poloha v mapě.";
+
+        let mapUi;
+        const applyMapSpotlightLetter = (letter, source) => {
+          if (!mapSpotlightActive || !letter || !TOKEN_MAP[letter]) return;
+          mapUi.setTurquoiseLetter(letter);
+          clearOrangeHints();
+          orangeMode = null;
+          syncPaletteDraggable();
+          logAction("park_orange_mapfind_resolve", { letter, source });
+        };
+        mapUi = attachParkMapInteractions(parkRoot, logAction);
+
+        const hintBridge = {
+          hint1Label: "Nevím, jak doplnit obrázky do cest.",
+          hint2Label: "Nemůžu najít plodinu na mapě.",
+          onHint1: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = false;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park1-orange-hint"), ORANGE_DRAG_MSG);
+            orangeMode = "drag";
+            syncPaletteDraggable();
+          },
+          onHint2: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = true;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park1-orange-hint"), ORANGE_MAP_MSG);
+            orangeMode = "mapfind";
+            syncPaletteDraggable();
+          }
+        };
+
+        const blockUntilGhostIntroAnswered = wireParkGhostIntroTask1(logAction, hintBridge);
+
+        const showEmptyActionNudge = (source) => {
+          if (!nudgeBannerEl) return;
+          nudgeBannerEl.classList.add("is-visible");
+          logAction("nudge_empty_action_show", { source });
+        };
+
+        const hideEmptyActionNudge = (source, extra = {}) => {
+          if (!nudgeBannerEl || !nudgeBannerEl.classList.contains("is-visible")) return;
+          nudgeBannerEl.classList.remove("is-visible");
+          logAction("nudge_empty_action_hide", { source, ...extra });
+        };
+
+        parkRoot.addEventListener("click", (ev) => {
+          if (!mapSpotlightActive) return;
+          const chip = ev.target.closest(".palette-token");
+          const slot = ev.target.closest(".task-slot");
+          if (!chip && !slot) return;
+          let letter = "";
+          if (chip) letter = chip.dataset.letter || "";
+          else if (slot) {
+            letter = slot.dataset.letter || slot.getAttribute("data-fixed-letter") || "";
+            if (!letter) {
+              const tl = slot.querySelector(".token-letter");
+              if (tl) letter = (tl.textContent || "").trim();
+            }
+          }
+          if (letter && TOKEN_MAP[letter]) applyMapSpotlightLetter(letter, chip ? "palette" : "slot");
+          else if (chip || slot) {
+            logAction("park_mapfind_click_no_highlight", {
+              source: chip ? "palette" : "slot",
+              slot_id: slot ? slot.dataset.slotId || null : null,
+              letter_attempt: letter || null
+            });
+          }
+        });
+
+        paletteEls.forEach((el) => {
+          el.addEventListener("dragstart", (ev) => {
+            dragLetter = el.dataset.letter || "";
+            if (ev.dataTransfer) {
+              ev.dataTransfer.setData("text/plain", dragLetter);
+              ev.dataTransfer.effectAllowed = "copy";
+            }
+            logAction("drag_start", { letter: dragLetter });
+          });
+          el.addEventListener("dragend", () => {
+            logAction("drag_end", { letter: dragLetter || "" });
+            dragLetter = null;
+          });
+          el.addEventListener("click", () => {
+            logAction("palette_token_chip_click", { letter: el.dataset.letter || "" });
+          });
+        });
+
+        slotEls.forEach((slotEl) => {
+          slotEl.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            slotEl.classList.add("drag-over");
+          });
+          slotEl.addEventListener("dragleave", () => slotEl.classList.remove("drag-over"));
+          slotEl.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            slotEl.classList.remove("drag-over");
+            const droppedLetter = (ev.dataTransfer && ev.dataTransfer.getData("text/plain")) || dragLetter;
+            if (!droppedLetter || !TOKEN_MAP[droppedLetter]) {
+              logAction("drop_invalid", { slot_id: slotEl.dataset.slotId });
+              return;
+            }
+            const prev = slotEl.dataset.letter || "";
+            renderTokenInSlot(slotEl, droppedLetter);
+            history.push({ type: "slot_drop", slotId: slotEl.dataset.slotId, prev, next: droppedLetter });
+            logAction("slot_drop", { slot_id: slotEl.dataset.slotId, from: prev, to: droppedLetter });
+            hideEmptyActionNudge("after_slot_drop", { slot_id: slotEl.dataset.slotId });
+            if (orangeMode === "drag") {
+              clearOrangeHints();
+              orangeMode = null;
+              syncPaletteDraggable();
+            }
+          });
+        });
+
+        edgeEls.forEach((el) => {
+          el.addEventListener("click", () => {
+            const prev = Number(el.dataset.edgeIndex || "0");
+            const next = (prev + 1) % edgePalette.length;
+            el.dataset.edgeIndex = String(next);
+            el.style.background = edgePalette[next];
+            history.push({ type: "edge_change", edgeId: el.dataset.edgeId, prev, next });
+            logAction("edge_change", { edge_id: el.dataset.edgeId, from: edgeNames[prev], to: edgeNames[next] });
+            hideEmptyActionNudge("after_edge_change", { edge_id: el.dataset.edgeId });
+          });
+        });
+
+        hintBtn.addEventListener("click", () => {
+          if (blockUntilGhostIntroAnswered("park-toggle-hint")) return;
+          logAction("park_toggle_hint_click", {
+            ghost_hint_used_before: !!ghostHintFromGhostUsed,
+            task_name: "ParkTask1"
+          });
+          clearOrangeHints();
+          mapUi.clearTurquoise();
+          logAction("park_map_turquoise_cleared", { source: "park_toggle_hint" });
+          orangeMode = null;
+          mapSpotlightActive = false;
+          syncPaletteDraggable();
+          hintBtn.textContent = "Schovat nápovědu";
+          if (!ghostHintFromGhostUsed) {
+            revealParkOrangeHint(document.getElementById("park1-orange-hint"), PARK_ORANGE_MSG_USE_GHOST);
+            logAction("park_hide_hint_prompt_use_ghost", {});
+            return;
+          }
+          logAction("park_hide_hint_cleared_visuals", {});
+        });
+
+        document.getElementById("park-undo").addEventListener("click", () => {
+          logAction("park_undo_button_click", { task_name: "ParkTask1" });
+          if (blockUntilGhostIntroAnswered("park-undo")) return;
+          if (history.length === 0) {
+            logAction("undo_clicked_while_no_history");
+            showEmptyActionNudge("undo_no_history");
+            return;
+          }
+          const last = history.pop();
+          if (last.type === "slot_drop") {
+            const slotEl = document.querySelector(`[data-slot-id="${last.slotId}"]`);
+            if (slotEl) renderTokenInSlot(slotEl, last.prev);
+          } else if (last.type === "edge_change") {
+            const edgeEl = document.querySelector(`[data-edge-id="${last.edgeId}"]`);
+            if (edgeEl) {
+              edgeEl.dataset.edgeIndex = String(last.prev);
+              edgeEl.style.background = edgePalette[last.prev];
+            }
+          }
+          logAction("undo", { reverted: last.type });
+        });
+
+        document.getElementById("park-reset").addEventListener("click", () => {
+          logAction("park_reset_button_click", { task_name: "ParkTask1" });
+          if (blockUntilGhostIntroAnswered("park-reset")) return;
+          if (history.length === 0) {
+            logAction("reset_clicked_while_no_history");
+            showEmptyActionNudge("reset_no_history");
+            return;
+          }
+          slotEls.forEach((slotEl) => renderTokenInSlot(slotEl, ""));
+          edgeEls.forEach((el) => {
+            el.dataset.edgeIndex = "0";
+            el.style.background = edgePalette[0];
+          });
+          history.length = 0;
+          logAction("reset_all");
+        });
+
+        wireParkFinishWithSelfAssessment({
+          finishButton: document.getElementById("park-finish"),
+          idPrefix: "park1-",
+          logAction,
+          blockUntilGhostIntroAnswered,
+          getSnapshot,
+          expected,
+          renderTokenInSlot,
+          buildTrialData: () => ({
+            task_name: "ParkTask1",
+            action_logs: actionLogs
+          })
+        });
+
+        setupDigitoolIdleGhostPrompt({
+          logAction,
+          isIdleAllowed: () => {
+            const bubble = document.getElementById("ghost-bubble");
+            const pc = document.getElementById("park-container");
+            const introBlocking = pc && pc.classList.contains("park-ghost-blocking");
+            return (
+              !introBlocking &&
+              !document.body.classList.contains("digitool-self-assessment-lock") &&
+              bubble &&
+              !bubble.classList.contains("degree-self-assessment-wide")
+            );
+          },
+          ghostText: document.getElementById("ghost-text"),
+          ghostButtons: document.getElementById("ghost-buttons"),
+          ghostBubble: document.getElementById("ghost-bubble"),
+          ghostUI: document.getElementById("ghost-ui"),
+          defaultGhostHtml: "Pokud budeš potřebovat nápovědu,<br>klikni na mě.",
+          defaultGhostButtonsHtml: "",
+          onRequestHelp: () => {
+            document.getElementById("ghost-character").click();
+          }
+        });
+
+        logAction("task_loaded", { task_name: "ParkTask1" });
+      }
+    };
+
+    const ParkTask2 = {
+      type: jsPsychHtmlButtonResponse,
+      choices: [],
+      data: { task_name: "ParkTask2" },
+      stimulus: () => `
+        <div class="park-task-root park-task-root--task2">
+          ${PARK_GHOST_UI_MINIMIZED}
+          <div class="prompt">
+            <h2>Doplň plodiny a barvy cest do plánků.</h2>
+            <p id="park-subtitle">Přetáhni obrázky z nabídky pod mapou do prázdných koleček. Barevné čtverečky vedle nabídky přetáhni na bílé cesty. V jedné cestě může být každá plodina nejvýše jednou. Cestu si můžeš vyznačit v mapě klikáním na obrázky a barevné cesty.</p>
+
+            <div id="park2-orange-hint" class="park-orange-hint task-hint-banner" role="status"></div>
+          </div>
+
+          <div class="park-stage">
+            <div class="park-zoom digitool-task-surface">
+            <div class="park-workspace">
+              <div class="park-map-column">
+              ${parkMapWithToolbar(1200)}
+              </div>
+
+              <div class="task-column">
+
+                <div class="task-path" data-path-id="p1">
+                  <div class="task-slot fixed-slot" data-fixed-letter="A">${tokenChip("A")}</div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p1_e1" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot drop-target" data-slot-id="p1_s1" data-path="p1"></div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p1_e2" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="O">${tokenChip("O")}</div>
+                  <div class="task-edge" style="background:#0066e6"></div>
+                  <div class="task-slot drop-target" data-slot-id="p1_s2" data-path="p1"></div>
+                  <div class="task-edge" style="background:#008a00"></div>
+                  <div class="task-slot drop-target" data-slot-id="p1_s3" data-path="p1"></div>
+                </div>
+                <div class="task-path" data-path-id="p2">
+                  <div class="task-slot drop-target" data-slot-id="p2_s1" data-path="p2"></div>
+                  <div class="task-edge" style="background:#d50000"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="L">${tokenChip("L")}</div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p2_e1" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot drop-target" data-slot-id="p2_s2" data-path="p2"></div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p2_e2" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="C">${tokenChip("C")}</div>
+                  <div class="task-edge" style="background:#d50000"></div>
+                  <div class="task-slot drop-target" data-slot-id="p2_s3" data-path="p2"></div>
+                </div>
+                <div class="task-path" data-path-id="p3">
+                  <div class="task-slot fixed-slot" data-fixed-letter="P">${tokenChip("P")}</div>
+                  <div class="task-edge" style="background:#0066e6"></div>
+                  <div class="task-slot drop-target" data-slot-id="p3_s1" data-path="p3"></div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p3_e1" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot drop-target" data-slot-id="p3_s2" data-path="p3"></div>
+                  <div class="task-edge" style="background:#0066e6"></div>
+                  <div class="task-slot drop-target" data-slot-id="p3_s3" data-path="p3"></div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p3_e2" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="T">${tokenChip("T")}</div>
+                </div>
+                <div class="task-path" data-path-id="p4">
+                  <div class="task-slot drop-target" data-slot-id="p4_s1" data-path="p4"></div>
+                  <div class="task-edge" style="background:#f2cf3f"></div>
+                  <div class="task-slot drop-target" data-slot-id="p4_s2" data-path="p4"></div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p4_e1" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="O">${tokenChip("O")}</div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p4_e2" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot drop-target" data-slot-id="p4_s3" data-path="p4"></div>
+                  <div class="task-edge edge-drop-target" data-edge-id="p4_e3" data-edge-index="0" style="background:#ffffff"></div>
+                  <div class="task-slot fixed-slot" data-fixed-letter="M">${tokenChip("M")}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="token-palette-wrap">
+              <div class="token-palette" id="token-palette">
+                ${PALETTE_ORDER.map((l) => tokenChip(l, true)).join("")}
+              </div>
+              <div class="color-palette-col" id="park-color-palette" aria-label="Barvy hran">
+                ${COLOR_PALETTE_HTML}
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <div id="park-nudge-banner" class="park-nudge-banner" role="alert">
+            Přesuň alespoň jednu plodinu nebo barvu na hranu.
+          </div>
+
+          <div class="park-controls">
+            <button type="button" class="custom-task-btn" id="park-toggle-hint">Schovat nápovědu</button>
+            <button type="button" class="custom-task-btn" id="park-undo">Krok zpět</button>
+            <button type="button" class="custom-task-btn" id="park-reset">Začít znovu</button>
+            <button type="button" class="custom-task-btn" id="park-finish">Další úloha</button>
+          </div>
+        </div>
+      `,
+
+      on_load: () => {
+        setDigitoolSelfAssessmentUiLock(false);
+        disposeDigitoolIdleTimer();
+        const expected = {
+          nodes: {
+            p1_s1: "C",
+            p1_s2: "H",
+            p1_s3: "R",
+            p2_s1: "J",
+            p2_s2: "T",
+            p2_s3: "R",
+            p3_s1: "J",
+            p3_s2: "M",
+            p3_s3: "R",
+            p4_s1: "A",
+            p4_s2: "C",
+            p4_s3: "R"
+          },
+          edges: {
+            p1_e1: "yellow",
+            p1_e2: "blue",
+            p2_e1: "red",
+            p2_e2: "red",
+            p3_e1: "green",
+            p3_e2: "blue",
+            p4_e1: "blue",
+            p4_e2: "red",
+            p4_e3: "blue"
+          }
+        };
+        const correctSolutionStrings = {
+          p1: "a-c-o-h-r",
+          p2: "j-l-t-c-r",
+          p3: "p-j-m-r-t",
+          p4: "a-c-o-r-m"
+        };
+        const hintBtn = document.getElementById("park-toggle-hint");
+        const nudgeBannerEl = document.getElementById("park-nudge-banner");
+        const slotEls = Array.from(document.querySelectorAll(".task-slot.drop-target"));
+        const edgeEls = Array.from(document.querySelectorAll(".task-edge.edge-drop-target"));
+        const paletteEls = Array.from(document.querySelectorAll(".palette-token"));
+        const colorEls = Array.from(document.querySelectorAll(".palette-color"));
+        const { actionLogs, logAction } = createParkActionLogger({
+          taskName: "ParkTask2"
+        });
+
+        const renderTokenInSlot = (slotEl, letter) => {
+          slotEl.innerHTML = letter ? tokenChip(letter) : "";
+          slotEl.dataset.letter = letter || "";
+        };
+
+        const getSnapshot = () => {
+          const nodes = {};
+          const edges = {};
+          slotEls.forEach((el) => {
+            nodes[el.dataset.slotId] = el.dataset.letter || "";
+          });
+          edgeEls.forEach((el) => {
+            const idx = Number(el.dataset.edgeIndex || "0");
+            edges[el.dataset.edgeId] = edgeNames[idx];
+          });
+          return { nodes, edges };
+        };
+
+        const history = [];
+        let dragLetter = null;
+        let dragColorIdx = null;
+
+        const parkRoot = document.querySelector(".park-task-root");
+        let orangeMode = null;
+        let mapSpotlightActive = false;
+        let ghostHintFromGhostUsed = false;
+        const clearOrangeHints = () => {
+          parkRoot.querySelectorAll(".park-orange-hint").forEach((el) => {
+            el.classList.remove("is-visible");
+            el.textContent = "";
+            el.style.removeProperty("display");
+          });
+        };
+        const syncPaletteDraggable = () => {
+          paletteEls.forEach((el) => {
+            el.draggable = orangeMode !== "mapfind";
+          });
+        };
+        const ORANGE_DRAG_MSG =
+          "Vyber si jedno kolečko s obrázkem pod mapou. Podrž tento obrázek a přetáhni jej do prázdného kolečka.";
+        const ORANGE_MAP_MSG =
+          "Když klikneš na obrázek v cestě nebo z nabídky pod mapou, zobrazí se ti jeho poloha v mapě.";
+
+        let mapUi;
+        const applyMapSpotlightLetter = (letter, source) => {
+          if (!mapSpotlightActive || !letter || !TOKEN_MAP[letter]) return;
+          mapUi.setTurquoiseLetter(letter);
+          clearOrangeHints();
+          orangeMode = null;
+          syncPaletteDraggable();
+          logAction("park_orange_mapfind_resolve", { letter, source });
+        };
+        mapUi = attachParkMapInteractions(parkRoot, logAction);
+
+        const hintBridge = {
+          hint1Label: "Nevím, jak doplnit obrázky do cest.",
+          hint3Label: "Nevím, jak obravit bílé cesty.",
+          hint2Label: "Nemůžu najít plodinu na mapě.",
+          onHint1: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = false;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park2-orange-hint"), ORANGE_DRAG_MSG);
+            orangeMode = "drag";
+            syncPaletteDraggable();
+          },
+          onHint3: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = false;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park2-orange-hint"), PARK_ORANGE_MSG_EDGE_COLOR);
+            orangeMode = "edgeColor";
+            syncPaletteDraggable();
+          },
+          onHint2: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = true;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park2-orange-hint"), ORANGE_MAP_MSG);
+            orangeMode = "mapfind";
+            syncPaletteDraggable();
+          }
+        };
+
+        wireParkGhostMinimized(logAction, hintBridge);
+
+        const showEmptyActionNudge = (source) => {
+          if (!nudgeBannerEl) return;
+          nudgeBannerEl.classList.add("is-visible");
+          logAction("nudge_empty_action_show", { source });
+        };
+
+        const hideEmptyActionNudge = (source, extra = {}) => {
+          if (!nudgeBannerEl || !nudgeBannerEl.classList.contains("is-visible")) return;
+          nudgeBannerEl.classList.remove("is-visible");
+          logAction("nudge_empty_action_hide", { source, ...extra });
+        };
+
+        parkRoot.addEventListener("click", (ev) => {
+          if (!mapSpotlightActive) return;
+          const chip = ev.target.closest(".palette-token");
+          const slot = ev.target.closest(".task-slot");
+          if (!chip && !slot) return;
+          let letter = "";
+          if (chip) letter = chip.dataset.letter || "";
+          else if (slot) {
+            letter = slot.dataset.letter || slot.getAttribute("data-fixed-letter") || "";
+            if (!letter) {
+              const tl = slot.querySelector(".token-letter");
+              if (tl) letter = (tl.textContent || "").trim();
+            }
+          }
+          if (letter && TOKEN_MAP[letter]) applyMapSpotlightLetter(letter, chip ? "palette" : "slot");
+          else if (chip || slot) {
+            logAction("park_mapfind_click_no_highlight", {
+              source: chip ? "palette" : "slot",
+              slot_id: slot ? slot.dataset.slotId || null : null,
+              letter_attempt: letter || null
+            });
+          }
+        });
+
+        paletteEls.forEach((el) => {
+          el.addEventListener("dragstart", (ev) => {
+            dragLetter = el.dataset.letter || "";
+            dragColorIdx = null;
+            if (ev.dataTransfer) {
+              ev.dataTransfer.setData("text/plain", dragLetter);
+              ev.dataTransfer.effectAllowed = "copy";
+            }
+            logAction("drag_start", { kind: "letter", letter: dragLetter });
+          });
+          el.addEventListener("dragend", () => {
+            logAction("drag_end", { kind: "letter", letter: dragLetter || "" });
+            dragLetter = null;
+          });
+          el.addEventListener("click", () => {
+            logAction("palette_token_chip_click", { letter: el.dataset.letter || "" });
+          });
+        });
+
+        colorEls.forEach((el) => {
+          el.addEventListener("dragstart", (ev) => {
+            dragColorIdx = Number(el.dataset.edgeColorIndex || "0");
+            dragLetter = null;
+            if (ev.dataTransfer) {
+              ev.dataTransfer.setData("text/plain", "color:" + dragColorIdx);
+              ev.dataTransfer.effectAllowed = "copy";
+            }
+            logAction("drag_start", { kind: "color", color_index: dragColorIdx, color_name: edgeNames[dragColorIdx] });
+          });
+          el.addEventListener("dragend", () => {
+            logAction("drag_end", { kind: "color", color_index: dragColorIdx });
+            dragColorIdx = null;
+          });
+          el.addEventListener("click", () => {
+            const ci = Number(el.dataset.edgeColorIndex || "0");
+            logAction("palette_color_chip_click", { color_index: ci, color_name: edgeNames[ci] });
+          });
+        });
+
+        slotEls.forEach((slotEl) => {
+          slotEl.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            slotEl.classList.add("drag-over");
+          });
+          slotEl.addEventListener("dragleave", () => slotEl.classList.remove("drag-over"));
+          slotEl.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            slotEl.classList.remove("drag-over");
+            const raw = (ev.dataTransfer && ev.dataTransfer.getData("text/plain")) || "";
+            const droppedLetter = raw.startsWith("color:") ? "" : raw || dragLetter;
+            if (!droppedLetter || !TOKEN_MAP[droppedLetter]) {
+              logAction("drop_invalid", { slot_id: slotEl.dataset.slotId, reason: "not_a_letter" });
+              return;
+            }
+            const prev = slotEl.dataset.letter || "";
+            renderTokenInSlot(slotEl, droppedLetter);
+            history.push({ type: "slot_drop", slotId: slotEl.dataset.slotId, prev, next: droppedLetter });
+            logAction("slot_drop", { slot_id: slotEl.dataset.slotId, from: prev, to: droppedLetter });
+            hideEmptyActionNudge("after_slot_drop", { slot_id: slotEl.dataset.slotId });
+            if (orangeMode === "drag") {
+              clearOrangeHints();
+              orangeMode = null;
+              syncPaletteDraggable();
+            }
+          });
+        });
+
+        edgeEls.forEach((el) => {
+          el.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            el.classList.add("drag-over-edge");
+          });
+          el.addEventListener("dragleave", () => el.classList.remove("drag-over-edge"));
+          el.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            el.classList.remove("drag-over-edge");
+            let nextIdx = dragColorIdx;
+            if (nextIdx === null && ev.dataTransfer) {
+              const raw = ev.dataTransfer.getData("text/plain") || "";
+              if (raw.startsWith("color:")) nextIdx = Number(raw.slice(6));
+            }
+            if (nextIdx === null || Number.isNaN(nextIdx)) {
+              logAction("edge_drop_invalid", { edge_id: el.dataset.edgeId, reason: "no_color" });
+              return;
+            }
+            const prev = Number(el.dataset.edgeIndex || "0");
+            el.dataset.edgeIndex = String(nextIdx);
+            el.style.background = edgePalette[nextIdx];
+            history.push({ type: "edge_change", edgeId: el.dataset.edgeId, prev, next: nextIdx });
+            logAction("edge_drop", { edge_id: el.dataset.edgeId, from: edgeNames[prev], to: edgeNames[nextIdx] });
+            hideEmptyActionNudge("after_edge_change", { edge_id: el.dataset.edgeId });
+            if (orangeMode === "edgeColor") {
+              clearOrangeHints();
+              orangeMode = null;
+            }
+          });
+        });
+
+        hintBtn.addEventListener("click", () => {
+          logAction("park_toggle_hint_click", {
+            ghost_hint_used_before: !!ghostHintFromGhostUsed,
+            task_name: "ParkTask2"
+          });
+          clearOrangeHints();
+          mapUi.clearTurquoise();
+          logAction("park_map_turquoise_cleared", { source: "park_toggle_hint" });
+          orangeMode = null;
+          mapSpotlightActive = false;
+          syncPaletteDraggable();
+          hintBtn.textContent = "Schovat nápovědu";
+          if (!ghostHintFromGhostUsed) {
+            revealParkOrangeHint(document.getElementById("park2-orange-hint"), PARK_ORANGE_MSG_USE_GHOST);
+            logAction("park_hide_hint_prompt_use_ghost", {});
+            return;
+          }
+          logAction("park_hide_hint_cleared_visuals", {});
+        });
+
+        document.getElementById("park-undo").addEventListener("click", () => {
+          logAction("park_undo_button_click", { task_name: "ParkTask2" });
+          if (history.length === 0) {
+            logAction("undo_clicked_while_no_history");
+            showEmptyActionNudge("undo_no_history");
+            return;
+          }
+          const last = history.pop();
+          if (last.type === "slot_drop") {
+            const slotEl = document.querySelector(`[data-slot-id="${last.slotId}"]`);
+            if (slotEl) renderTokenInSlot(slotEl, last.prev);
+          } else if (last.type === "edge_change") {
+            const edgeEl = document.querySelector(`[data-edge-id="${last.edgeId}"]`);
+            if (edgeEl) {
+              edgeEl.dataset.edgeIndex = String(last.prev);
+              edgeEl.style.background = edgePalette[last.prev];
+            }
+          }
+          logAction("undo", { reverted: last.type });
+        });
+
+        document.getElementById("park-reset").addEventListener("click", () => {
+          logAction("park_reset_button_click", { task_name: "ParkTask2" });
+          if (history.length === 0) {
+            logAction("reset_clicked_while_no_history");
+            showEmptyActionNudge("reset_no_history");
+            return;
+          }
+          slotEls.forEach((slotEl) => renderTokenInSlot(slotEl, ""));
+          edgeEls.forEach((el) => {
+            el.dataset.edgeIndex = "0";
+            el.style.background = edgePalette[0];
+          });
+          history.length = 0;
+          logAction("reset_all");
+        });
+
+        wireParkFinishWithSelfAssessment({
+          finishButton: document.getElementById("park-finish"),
+          idPrefix: "park2-",
+          feedbackContinueLabel: DIGITOOL_INCLUDE_PARK_TASK_3 ? "Pokračovat na další úlohu" : "Ukončit úlohu",
+          logAction,
+          blockUntilGhostIntroAnswered: null,
+          getSnapshot,
+          expected,
+          renderTokenInSlot,
+          buildTrialData: () => ({
+            task_name: "ParkTask2",
+            action_logs: actionLogs
+          })
+        });
+
+        setupDigitoolIdleGhostPrompt({
+          logAction,
+          isIdleAllowed: () => {
+            const bubble = document.getElementById("ghost-bubble");
+            return (
+              !document.body.classList.contains("digitool-self-assessment-lock") &&
+              bubble &&
+              !bubble.classList.contains("degree-self-assessment-wide")
+            );
+          },
+          ghostText: document.getElementById("ghost-text"),
+          ghostButtons: document.getElementById("ghost-buttons"),
+          ghostBubble: document.getElementById("ghost-bubble"),
+          ghostUI: document.getElementById("ghost-ui"),
+          defaultGhostHtml: "Pokud budeš potřebovat nápovědu,<br>klikni na mě.",
+          defaultGhostButtonsHtml: "",
+          onRequestHelp: () => {
+            document.getElementById("ghost-character").click();
+          }
+        });
+
+        logAction("task_loaded", { task_name: "ParkTask2" });
+      }
+
+    };
+
+    // NOTE: ParkTask3 — vypnuto pro studenty (viz DIGITOOL_INCLUDE_PARK_TASK_3).
+    const ParkTask3 = {
+      type: jsPsychHtmlButtonResponse,
+      choices: [],
+      data: { task_name: "ParkTask3" },
+      stimulus: () => `
+        <div class="park-task-root park-task-root--task2 park-task-root--task3">
+          ${PARK_GHOST_UI_MINIMIZED}
+          <div class="prompt">
+            <h2>Doplň plodiny a barvy cest do plánků.</h2>
+            <p id="park-subtitle">Přetáhni obrázky z nabídky pod mapou do prázdných koleček. Barevné čtverečky vedle nabídky přetáhni na bílé cesty. V jedné cestě může být každá plodina nejvýše jednou. Cestu si můžeš vyznačit v mapě klikáním na obrázky a barevné cesty.</p>
+
+            <div id="park3-orange-hint" class="park-orange-hint task-hint-banner" role="status"></div>
+          </div>
+
+          <div class="park-stage">
+            <div class="park-zoom digitool-task-surface">
+            <div class="park-workspace park-workspace--task3">
+              <div class="park-map-column">
+                ${parkMapWithToolbar(1200)}
+              </div>
+              <div class="park-task3-graphs-column">
+                ${buildParkTask3GraphsHtml()}
+              </div>
+            </div>
+
+            <div class="token-palette-wrap">
+              <div class="token-palette" id="token-palette">
+                ${PALETTE_ORDER.map((l) => tokenChip(l, true)).join("")}
+              </div>
+              <div class="color-palette-col" id="park-color-palette" aria-label="Barvy hran">
+                ${COLOR_PALETTE_HTML}
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <div id="park-nudge-banner" class="park-nudge-banner" role="alert">
+            Přesuň alespoň jednu plodinu nebo barvu na hranu.
+          </div>
+
+          <div class="park-controls">
+            <button type="button" class="custom-task-btn" id="park-toggle-hint">Schovat nápovědu</button>
+            <button type="button" class="custom-task-btn" id="park-undo">Krok zpět</button>
+            <button type="button" class="custom-task-btn" id="park-reset">Začít znovu</button>
+            <button type="button" class="custom-task-btn" id="park-finish">Další úloha</button>
+          </div>
+        </div>
+      `,
+      on_load: () => {
+        setDigitoolSelfAssessmentUiLock(false);
+        disposeDigitoolIdleTimer();
+        const expected = PARK_TASK3_EXPECTED;
+        const correctSolutionStrings = {};
+        const hintBtn = document.getElementById("park-toggle-hint");
+        const nudgeBannerEl = document.getElementById("park-nudge-banner");
+        const slotEls = Array.from(document.querySelectorAll(".task-slot.drop-target"));
+        const edgeEls = Array.from(document.querySelectorAll(".task-edge.edge-drop-target"));
+        const paletteEls = Array.from(document.querySelectorAll(".palette-token"));
+        const colorEls = Array.from(document.querySelectorAll(".palette-color"));
+        const { actionLogs, logAction } = createParkActionLogger({
+          taskName: "ParkTask3"
+        });
+
+        const renderTokenInSlot = (slotEl, letter) => {
+          slotEl.innerHTML = letter ? tokenChip(letter) : "";
+          slotEl.dataset.letter = letter || "";
+        };
+
+        const getSnapshot = () => {
+          const nodes = {};
+          const edges = {};
+          slotEls.forEach((el) => {
+            nodes[el.dataset.slotId] = el.dataset.letter || "";
+          });
+          edgeEls.forEach((el) => {
+            const idx = Number(el.dataset.edgeIndex || "0");
+            edges[el.dataset.edgeId] = edgeNames[idx];
+          });
+          return { nodes, edges };
+        };
+
+        const history = [];
+        let dragLetter = null;
+        let dragColorIdx = null;
+
+        const parkRoot = document.querySelector(".park-task-root");
+        let orangeMode = null;
+        let mapSpotlightActive = false;
+        let ghostHintFromGhostUsed = false;
+        const clearOrangeHints = () => {
+          parkRoot.querySelectorAll(".park-orange-hint").forEach((el) => {
+            el.classList.remove("is-visible");
+            el.textContent = "";
+            el.style.removeProperty("display");
+          });
+        };
+        const syncPaletteDraggable = () => {
+          paletteEls.forEach((el) => {
+            el.draggable = orangeMode !== "mapfind";
+          });
+        };
+        const ORANGE_DRAG_MSG =
+          "Vyber si jedno kolečko s obrázkem pod mapou. Podrž tento obrázek a přetáhni jej do prázdného kolečka.";
+        const ORANGE_MAP_MSG =
+          "Když klikneš na obrázek v cestě nebo z nabídky pod mapou, zobrazí se ti jeho poloha v mapě.";
+
+        let mapUi;
+        const applyMapSpotlightLetter = (letter, source) => {
+          if (!mapSpotlightActive || !letter || !TOKEN_MAP[letter]) return;
+          mapUi.setTurquoiseLetter(letter);
+          clearOrangeHints();
+          orangeMode = null;
+          syncPaletteDraggable();
+          logAction("park_orange_mapfind_resolve", { letter, source });
+        };
+        mapUi = attachParkMapInteractions(parkRoot, logAction);
+
+        const hintBridge = {
+          hint1Label: "Nevím, jak doplnit obrázky do cest.",
+          hint3Label: "Nevím, jak obarvit bílé cesty.",
+          hint2Label: "Nemůžu najít plodinu na mapě.",
+          onHint1: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = false;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park3-orange-hint"), ORANGE_DRAG_MSG);
+            orangeMode = "drag";
+            syncPaletteDraggable();
+          },
+          onHint3: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = false;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park3-orange-hint"), PARK_ORANGE_MSG_EDGE_COLOR);
+            orangeMode = "edgeColor";
+            syncPaletteDraggable();
+          },
+          onHint2: () => {
+            ghostHintFromGhostUsed = true;
+            mapSpotlightActive = true;
+            clearOrangeHints();
+            revealParkOrangeHint(document.getElementById("park3-orange-hint"), ORANGE_MAP_MSG);
+            orangeMode = "mapfind";
+            syncPaletteDraggable();
+          }
+        };
+
+        wireParkGhostMinimized(logAction, hintBridge);
+
+        const showEmptyActionNudge = (source) => {
+          if (!nudgeBannerEl) return;
+          nudgeBannerEl.classList.add("is-visible");
+          logAction("nudge_empty_action_show", { source });
+        };
+
+        const hideEmptyActionNudge = (source, extra = {}) => {
+          if (!nudgeBannerEl || !nudgeBannerEl.classList.contains("is-visible")) return;
+          nudgeBannerEl.classList.remove("is-visible");
+          logAction("nudge_empty_action_hide", { source, ...extra });
+        };
+
+        parkRoot.addEventListener("click", (ev) => {
+          if (!mapSpotlightActive) return;
+          const chip = ev.target.closest(".palette-token");
+          const slot = ev.target.closest(".task-slot");
+          if (!chip && !slot) return;
+          let letter = "";
+          if (chip) letter = chip.dataset.letter || "";
+          else if (slot) {
+            letter = slot.dataset.letter || slot.getAttribute("data-fixed-letter") || "";
+            if (!letter) {
+              const tl = slot.querySelector(".token-letter");
+              if (tl) letter = (tl.textContent || "").trim();
+            }
+          }
+          if (letter && TOKEN_MAP[letter]) applyMapSpotlightLetter(letter, chip ? "palette" : "slot");
+          else if (chip || slot) {
+            logAction("park_mapfind_click_no_highlight", {
+              source: chip ? "palette" : "slot",
+              slot_id: slot ? slot.dataset.slotId || null : null,
+              letter_attempt: letter || null
+            });
+          }
+        });
+
+        paletteEls.forEach((el) => {
+          el.addEventListener("dragstart", (ev) => {
+            dragLetter = el.dataset.letter || "";
+            dragColorIdx = null;
+            if (ev.dataTransfer) {
+              ev.dataTransfer.setData("text/plain", dragLetter);
+              ev.dataTransfer.effectAllowed = "copy";
+            }
+            logAction("drag_start", { kind: "letter", letter: dragLetter });
+          });
+          el.addEventListener("dragend", () => {
+            logAction("drag_end", { kind: "letter", letter: dragLetter || "" });
+            dragLetter = null;
+          });
+          el.addEventListener("click", () => {
+            logAction("palette_token_chip_click", { letter: el.dataset.letter || "" });
+          });
+        });
+
+        colorEls.forEach((el) => {
+          el.addEventListener("dragstart", (ev) => {
+            dragColorIdx = Number(el.dataset.edgeColorIndex || "0");
+            dragLetter = null;
+            if (ev.dataTransfer) {
+              ev.dataTransfer.setData("text/plain", "color:" + dragColorIdx);
+              ev.dataTransfer.effectAllowed = "copy";
+            }
+            logAction("drag_start", { kind: "color", color_index: dragColorIdx, color_name: edgeNames[dragColorIdx] });
+          });
+          el.addEventListener("dragend", () => {
+            logAction("drag_end", { kind: "color", color_index: dragColorIdx });
+            dragColorIdx = null;
+          });
+          el.addEventListener("click", () => {
+            const ci = Number(el.dataset.edgeColorIndex || "0");
+            logAction("palette_color_chip_click", { color_index: ci, color_name: edgeNames[ci] });
+          });
+        });
+
+        slotEls.forEach((slotEl) => {
+          slotEl.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            slotEl.classList.add("drag-over");
+          });
+          slotEl.addEventListener("dragleave", () => slotEl.classList.remove("drag-over"));
+          slotEl.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            slotEl.classList.remove("drag-over");
+            const raw = (ev.dataTransfer && ev.dataTransfer.getData("text/plain")) || "";
+            const droppedLetter = raw.startsWith("color:") ? "" : raw || dragLetter;
+            if (!droppedLetter || !TOKEN_MAP[droppedLetter]) {
+              logAction("drop_invalid", { slot_id: slotEl.dataset.slotId, reason: "not_a_letter" });
+              return;
+            }
+            const prev = slotEl.dataset.letter || "";
+            renderTokenInSlot(slotEl, droppedLetter);
+            history.push({ type: "slot_drop", slotId: slotEl.dataset.slotId, prev, next: droppedLetter });
+            logAction("slot_drop", { slot_id: slotEl.dataset.slotId, from: prev, to: droppedLetter });
+            hideEmptyActionNudge("after_slot_drop", { slot_id: slotEl.dataset.slotId });
+            if (orangeMode === "drag") {
+              clearOrangeHints();
+              orangeMode = null;
+              syncPaletteDraggable();
+            }
+          });
+        });
+
+        edgeEls.forEach((el) => {
+          el.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            el.classList.add("drag-over-edge");
+          });
+          el.addEventListener("dragleave", () => el.classList.remove("drag-over-edge"));
+          el.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            el.classList.remove("drag-over-edge");
+            let nextIdx = dragColorIdx;
+            if (nextIdx === null && ev.dataTransfer) {
+              const raw = ev.dataTransfer.getData("text/plain") || "";
+              if (raw.startsWith("color:")) nextIdx = Number(raw.slice(6));
+            }
+            if (nextIdx === null || Number.isNaN(nextIdx)) {
+              logAction("edge_drop_invalid", { edge_id: el.dataset.edgeId, reason: "no_color" });
+              return;
+            }
+            const prev = Number(el.dataset.edgeIndex || "0");
+            el.dataset.edgeIndex = String(nextIdx);
+            el.style.background = edgePalette[nextIdx];
+            history.push({ type: "edge_change", edgeId: el.dataset.edgeId, prev, next: nextIdx });
+            logAction("edge_drop", { edge_id: el.dataset.edgeId, from: edgeNames[prev], to: edgeNames[nextIdx] });
+            hideEmptyActionNudge("after_edge_change", { edge_id: el.dataset.edgeId });
+            if (orangeMode === "edgeColor") {
+              clearOrangeHints();
+              orangeMode = null;
+            }
+          });
+        });
+
+        hintBtn.addEventListener("click", () => {
+          logAction("park_toggle_hint_click", {
+            ghost_hint_used_before: !!ghostHintFromGhostUsed,
+            task_name: "ParkTask3"
+          });
+          clearOrangeHints();
+          mapUi.clearTurquoise();
+          logAction("park_map_turquoise_cleared", { source: "park_toggle_hint" });
+          orangeMode = null;
+          mapSpotlightActive = false;
+          syncPaletteDraggable();
+          hintBtn.textContent = "Schovat nápovědu";
+          if (!ghostHintFromGhostUsed) {
+            revealParkOrangeHint(document.getElementById("park3-orange-hint"), PARK_ORANGE_MSG_USE_GHOST);
+            logAction("park_hide_hint_prompt_use_ghost", {});
+            return;
+          }
+          logAction("park_hide_hint_cleared_visuals", {});
+        });
+
+        document.getElementById("park-undo").addEventListener("click", () => {
+          logAction("park_undo_button_click", { task_name: "ParkTask3" });
+          if (history.length === 0) {
+            logAction("undo_clicked_while_no_history");
+            showEmptyActionNudge("undo_no_history");
+            return;
+          }
+          const last = history.pop();
+          if (last.type === "slot_drop") {
+            const slotEl = document.querySelector(`[data-slot-id="${last.slotId}"]`);
+            if (slotEl) renderTokenInSlot(slotEl, last.prev);
+          } else if (last.type === "edge_change") {
+            const edgeEl = document.querySelector(`[data-edge-id="${last.edgeId}"]`);
+            if (edgeEl) {
+              edgeEl.dataset.edgeIndex = String(last.prev);
+              edgeEl.style.background = edgePalette[last.prev];
+            }
+          }
+          logAction("undo", { reverted: last.type });
+        });
+
+        document.getElementById("park-reset").addEventListener("click", () => {
+          logAction("park_reset_button_click", { task_name: "ParkTask3" });
+          if (history.length === 0) {
+            logAction("reset_clicked_while_no_history");
+            showEmptyActionNudge("reset_no_history");
+            return;
+          }
+          slotEls.forEach((slotEl) => renderTokenInSlot(slotEl, ""));
+          edgeEls.forEach((el) => {
+            el.dataset.edgeIndex = "0";
+            el.style.background = edgePalette[0];
+          });
+          history.length = 0;
+          logAction("reset_all");
+        });
+
+        wireParkFinishWithSelfAssessment({
+          finishButton: document.getElementById("park-finish"),
+          idPrefix: "park3-",
+          feedbackContinueLabel: "Ukončit úlohu",
+          logAction,
+          blockUntilGhostIntroAnswered: null,
+          getSnapshot,
+          expected,
+          renderTokenInSlot,
+          buildTrialData: () => ({
+            task_name: "ParkTask3",
+            action_logs: actionLogs
+          })
+        });
+
+        setupDigitoolIdleGhostPrompt({
+          logAction,
+          isIdleAllowed: () => {
+            const bubble = document.getElementById("ghost-bubble");
+            return (
+              !document.body.classList.contains("digitool-self-assessment-lock") &&
+              bubble &&
+              !bubble.classList.contains("degree-self-assessment-wide")
+            );
+          },
+          ghostText: document.getElementById("ghost-text"),
+          ghostButtons: document.getElementById("ghost-buttons"),
+          ghostBubble: document.getElementById("ghost-bubble"),
+          ghostUI: document.getElementById("ghost-ui"),
+          defaultGhostHtml: "Pokud budeš potřebovat nápovědu,<br>klikni na mě.",
+          defaultGhostButtonsHtml: "",
+          onRequestHelp: () => {
+            document.getElementById("ghost-character").click();
+          }
+        });
+
+        logAction("task_loaded", { task_name: "ParkTask3" });
+      }
+    };
+
+    jsPsych.run(
+      DigitoolActionLogStore.bindTrialOnFinish(
+        DIGITOOL_INCLUDE_PARK_TASK_3
+          ? [ParkTask1, ParkTask2, ParkTask3]
+          : [ParkTask1, ParkTask2],
+        respondentIdFromUrl,
+        "park"
+      )
+    );
+  </script>
+</body>
+</html>
